@@ -1,0 +1,42 @@
+[
+  {
+    "id": "na",
+    "name": "Naturally Aspirated",
+    "power_mult": 1.0,
+    "lag": 0.0,
+    "heat_mult": 1.0,
+    "reliability_mult": 1.08
+  },
+  {
+    "id": "single_turbo",
+    "name": "Single Turbo",
+    "power_mult": 1.22,
+    "lag": 0.38,
+    "heat_mult": 1.18,
+    "reliability_mult": 0.96
+  },
+  {
+    "id": "twin_turbo",
+    "name": "Twin Turbo",
+    "power_mult": 1.32,
+    "lag": 0.22,
+    "heat_mult": 1.26,
+    "reliability_mult": 0.92
+  },
+  {
+    "id": "supercharger",
+    "name": "Supercharger",
+    "power_mult": 1.18,
+    "lag": 0.02,
+    "heat_mult": 1.14,
+    "reliability_mult": 0.98
+  },
+  {
+    "id": "compound",
+    "name": "Compound",
+    "power_mult": 1.46,
+    "lag": 0.3,
+    "heat_mult": 1.42,
+    "reliability_mult": 0.82
+  }
+]

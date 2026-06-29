@@ -1,0 +1,23 @@
+[
+  {
+    "id": "aluminum",
+    "name": "Standard Aluminum",
+    "mass_mult": 1.0,
+    "max_heat_mult": 1.0,
+    "durability_mult": 1.0
+  },
+  {
+    "id": "titanium",
+    "name": "Lightweight Titanium",
+    "mass_mult": 0.88,
+    "max_heat_mult": 1.08,
+    "durability_mult": 0.94
+  },
+  {
+    "id": "ceramic",
+    "name": "Extreme Ceramic",
+    "mass_mult": 0.82,
+    "max_heat_mult": 1.24,
+    "durability_mult": 0.82
+  }
+]

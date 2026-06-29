@@ -1,0 +1,44 @@
+[
+  {
+    "id": 0,
+    "name": "System",
+    "duration": "2 weeks",
+    "goal": "Define the engine builder architecture and race loop before deep implementation.",
+    "deliverable": "Design doc, engine matrix, UI flow, and Godot scaffold."
+  },
+  {
+    "id": 1,
+    "name": "Engine Builder",
+    "duration": "5 weeks",
+    "goal": "Let players build distinct engines and see clear differences between configurations.",
+    "deliverable": "Playable builder with power and torque curve feedback."
+  },
+  {
+    "id": 2,
+    "name": "Race Sim",
+    "duration": "4 weeks",
+    "goal": "Run races with tactical windows and visible decision impact.",
+    "deliverable": "End-to-end build, race, result flow on two tracks."
+  },
+  {
+    "id": 3,
+    "name": "Core Loop",
+    "duration": "3 weeks",
+    "goal": "Make Build, Race, Analyze, Rebuild produce a clear learning moment.",
+    "deliverable": "Functional analysis screen and basic progression."
+  },
+  {
+    "id": 4,
+    "name": "Online Async",
+    "duration": "4 weeks",
+    "goal": "Add leaderboards, public setups, weekly challenges, and ghost races.",
+    "deliverable": "Async online layer with real race submissions."
+  },
+  {
+    "id": 5,
+    "name": "Content + Launch",
+    "duration": "4 weeks",
+    "goal": "Add enough content and polish for first public players.",
+    "deliverable": "Itch.io launch, feedback loop, and data-informed PvP planning."
+  }
+]

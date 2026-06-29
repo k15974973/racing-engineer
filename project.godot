@@ -1,0 +1,25 @@
+; Engine configuration file.
+; Godot 4 project scaffold for Racing Engineer.
+
+config_version=5
+
+[application]
+
+config/name="Racing Engineer"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.2", "Forward Plus")
+
+[autoload]
+
+GameData="*res://scripts/autoload/game_data.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"

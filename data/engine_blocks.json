@@ -1,0 +1,56 @@
+[
+  {
+    "id": "v4",
+    "name": "V4",
+    "rpm_range": [1800, 8800],
+    "torque_profile": "Light, sharp response with modest peak torque.",
+    "mass": 132,
+    "heat_factor": 0.92,
+    "reliability_factor": 1.08
+  },
+  {
+    "id": "v6",
+    "name": "V6",
+    "rpm_range": [1600, 8200],
+    "torque_profile": "Balanced torque spread with stable mid-range delivery.",
+    "mass": 168,
+    "heat_factor": 1.0,
+    "reliability_factor": 1.0
+  },
+  {
+    "id": "v8",
+    "name": "V8",
+    "rpm_range": [1400, 7600],
+    "torque_profile": "Strong low and mid torque with heavy thermal load.",
+    "mass": 212,
+    "heat_factor": 1.2,
+    "reliability_factor": 0.94
+  },
+  {
+    "id": "boxer_4",
+    "name": "Boxer-4",
+    "rpm_range": [1800, 8400],
+    "torque_profile": "Stable corner-exit delivery with low center-of-mass benefits.",
+    "mass": 148,
+    "heat_factor": 0.96,
+    "reliability_factor": 1.04
+  },
+  {
+    "id": "inline_4",
+    "name": "Inline-4",
+    "rpm_range": [2000, 9200],
+    "torque_profile": "Narrower torque band that rewards boost tuning.",
+    "mass": 126,
+    "heat_factor": 0.98,
+    "reliability_factor": 1.02
+  },
+  {
+    "id": "rotary",
+    "name": "Rotary",
+    "rpm_range": [3200, 10500],
+    "torque_profile": "Compact high-RPM output with high heat sensitivity.",
+    "mass": 118,
+    "heat_factor": 1.28,
+    "reliability_factor": 0.88
+  }
+]

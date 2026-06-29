@@ -1,0 +1,26 @@
+[
+  {
+    "id": "power_ring",
+    "name": "Power Ring",
+    "laps": 3,
+    "length_km": 4.8,
+    "base_lap_time": 92.0,
+    "straight_bias": 0.68,
+    "corner_bias": 0.22,
+    "endurance_bias": 0.10,
+    "heat_stress": 1.05,
+    "description": "Long straights reward peak power and stable high-load cooling."
+  },
+  {
+    "id": "technical_loop",
+    "name": "Technical Loop",
+    "laps": 4,
+    "length_km": 3.6,
+    "base_lap_time": 84.0,
+    "straight_bias": 0.24,
+    "corner_bias": 0.58,
+    "endurance_bias": 0.18,
+    "heat_stress": 0.92,
+    "description": "Linked corners reward response, torque delivery, and low mass."
+  }
+]
