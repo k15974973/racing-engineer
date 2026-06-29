@@ -274,7 +274,7 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 		"summary": _race_summary(fit_score, effective_heat, effective_reliability)
 	}
 
-func analyze_race_result(race_result: Dictionary) -> Dictionary:
+func analyze_race_result(race_result: Dictionary, race_history: Array = []) -> Dictionary:
 	if race_result.is_empty():
 		return {"error": "Run a race before opening analysis."}
 	if race_result.has("error"):
@@ -365,6 +365,14 @@ func analyze_race_result(race_result: Dictionary) -> Dictionary:
 	if suggestions.is_empty():
 		suggestions.append("Setup is coherent for this track. Next improvement should come from comparing saved variants.")
 
+	var comparison := _race_history_comparison(race_result, race_history)
+	if not comparison.is_empty():
+		findings.append({
+			"title": "History comparison",
+			"body": comparison.get("summary", ""),
+			"severity": "good" if float(comparison.get("delta_to_best", 0.0)) <= 0.0 else "info"
+		})
+
 	return {
 		"grade": _analysis_grade(score, delta, heat, reliability),
 		"headline": _analysis_headline(score, delta, heat, reliability),
@@ -372,6 +380,7 @@ func analyze_race_result(race_result: Dictionary) -> Dictionary:
 		"setup": setup,
 		"findings": findings,
 		"suggestions": _dedupe_strings(suggestions),
+		"comparison": comparison,
 		"scorecard": {
 			"track_fit": snappedf(score, 0.1),
 			"power": snappedf(power_score, 0.1),
@@ -381,6 +390,42 @@ func analyze_race_result(race_result: Dictionary) -> Dictionary:
 			"reliability": snappedf(reliability, 0.1),
 			"lap_delta": snappedf(delta, 0.01)
 		}
+	}
+
+func _race_history_comparison(race_result: Dictionary, race_history: Array) -> Dictionary:
+	var track: Dictionary = race_result.get("track", {})
+	var track_id := str(track.get("id", ""))
+	if track_id == "" or race_history.is_empty():
+		return {}
+
+	var current_total := float(race_result.get("total_time", 0.0))
+	var best_record: Dictionary = {}
+	var best_total := INF
+	for item in race_history:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = item
+		var result: Dictionary = record.get("result", {})
+		var history_track: Dictionary = result.get("track", {})
+		if str(history_track.get("id", "")) != track_id:
+			continue
+
+		var total := float(result.get("total_time", INF))
+		if total < best_total:
+			best_total = total
+			best_record = record
+
+	if best_record.is_empty():
+		return {}
+
+	var delta_to_best := current_total - best_total
+	var summary := "Current run is %+0.2fs versus saved best %s on this track." % [delta_to_best, best_record.get("name", "Race")]
+	return {
+		"best_name": best_record.get("name", "Race"),
+		"best_total_time": snappedf(best_total, 0.01),
+		"current_total_time": snappedf(current_total, 0.01),
+		"delta_to_best": snappedf(delta_to_best, 0.01),
+		"summary": summary
 	}
 
 func _build_race_sectors(power_score: float, technical_score: float, endurance_score: float, straight_bias: float, corner_bias: float, endurance_bias: float) -> Array:

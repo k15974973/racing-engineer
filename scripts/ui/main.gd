@@ -9,6 +9,8 @@ const CurveChart := preload("res://scripts/ui/curve_chart.gd")
 const TEST_BENCH_DURATION := 30.0
 const SAVED_SETUPS_PATH := "user://saved_setups.json"
 const SAVED_SETUPS_VERSION := 1
+const RACE_HISTORY_PATH := "user://race_history.json"
+const RACE_HISTORY_VERSION := 1
 
 var _content: PanelContainer
 var _nav_buttons: Dictionary = {}
@@ -48,9 +50,12 @@ var _saved_setups: Array = []
 var _race_track_id := ""
 var _race_result: Dictionary = {}
 var _race_decisions: Dictionary = {}
+var _race_history_counter := 1
+var _race_history: Array = []
 
 func _ready() -> void:
 	_load_saved_setups()
+	_load_race_history()
 	_build_shell()
 	_show_view(VIEW_ENGINE_BUILDER)
 
@@ -734,6 +739,129 @@ func _deserialize_saved_setup(raw: Dictionary) -> Dictionary:
 		"setup": setup
 	}
 
+func _save_current_race() -> void:
+	if _race_result.is_empty() or _race_result.has("error"):
+		return
+
+	var name := "Race %d" % _race_history_counter
+	_race_history_counter += 1
+	_race_history.append({
+		"name": name,
+		"selection": _builder_selection.duplicate(true),
+		"tuning": _builder_tuning.duplicate(true),
+		"track_id": _race_track_id,
+		"decisions": _race_decisions.duplicate(true),
+		"result": _race_result.duplicate(true)
+	})
+	_write_race_history()
+	_show_view(VIEW_RACE_SIM)
+
+func _load_race_history_entry(index: int) -> void:
+	if index < 0 or index >= _race_history.size():
+		return
+
+	var record: Dictionary = _race_history[index]
+	_builder_selection = record.get("selection", _builder_selection).duplicate(true)
+	_builder_tuning = record.get("tuning", _builder_tuning).duplicate(true)
+	_race_track_id = str(record.get("track_id", _race_track_id))
+	_race_decisions = record.get("decisions", {}).duplicate(true)
+	_race_result = GameData.calculate_race_result(_current_setup(), _race_track_id, _race_decisions)
+	_reset_test_bench()
+	_show_view(VIEW_RACE_SIM)
+
+func _delete_race_history_entry(index: int) -> void:
+	if index < 0 or index >= _race_history.size():
+		return
+
+	_race_history.remove_at(index)
+	_write_race_history()
+	_show_view(VIEW_RACE_SIM)
+
+func _clear_race_history() -> void:
+	_race_history.clear()
+	_write_race_history()
+	_show_view(VIEW_RACE_SIM)
+
+func _load_race_history() -> void:
+	_race_history.clear()
+	if not FileAccess.file_exists(RACE_HISTORY_PATH):
+		return
+
+	var text := FileAccess.get_file_as_string(RACE_HISTORY_PATH)
+	var parsed: Variant = JSON.parse_string(text)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+
+	var data: Dictionary = parsed
+	if int(data.get("version", 0)) != RACE_HISTORY_VERSION:
+		return
+
+	var records: Variant = data.get("races", [])
+	if typeof(records) != TYPE_ARRAY:
+		return
+
+	for item in records:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record := _deserialize_race_history_entry(item)
+		if record.is_empty():
+			continue
+
+		_race_history.append(record)
+
+	_race_history_counter = max(_race_history_counter, _race_history.size() + 1)
+
+func _write_race_history() -> void:
+	var records: Array = []
+	for record in _race_history:
+		if typeof(record) != TYPE_DICTIONARY:
+			continue
+		records.append(_serialize_race_history_entry(record))
+
+	var payload := {
+		"version": RACE_HISTORY_VERSION,
+		"races": records
+	}
+
+	var file := FileAccess.open(RACE_HISTORY_PATH, FileAccess.WRITE)
+	if file == null:
+		push_warning("Could not write race history to %s" % RACE_HISTORY_PATH)
+		return
+
+	file.store_string(JSON.stringify(payload, "\t"))
+
+func _serialize_race_history_entry(record: Dictionary) -> Dictionary:
+	return {
+		"name": str(record.get("name", "Race")),
+		"selection": record.get("selection", {}).duplicate(true),
+		"tuning": record.get("tuning", {}).duplicate(true),
+		"track_id": str(record.get("track_id", "")),
+		"decisions": record.get("decisions", {}).duplicate(true)
+	}
+
+func _deserialize_race_history_entry(raw: Dictionary) -> Dictionary:
+	var selection: Dictionary = raw.get("selection", {})
+	var tuning: Dictionary = raw.get("tuning", {})
+	var track_id := str(raw.get("track_id", ""))
+	var decisions: Dictionary = raw.get("decisions", {})
+	if selection.is_empty() or tuning.is_empty() or track_id == "":
+		return {}
+
+	var setup := GameData.calculate_engine_setup(str(selection.get("block", "")), str(selection.get("induction", "")), str(selection.get("material", "")), tuning)
+	var result := GameData.calculate_race_result(setup, track_id, decisions)
+	if result.has("error"):
+		return {}
+
+	return {
+		"name": str(raw.get("name", "Race")),
+		"selection": selection.duplicate(true),
+		"tuning": tuning.duplicate(true),
+		"track_id": track_id,
+		"decisions": decisions.duplicate(true),
+		"result": result
+	}
+
 func _tuning_slider(label_text: String, key: String, min_value: float, max_value: float, step: float, unit: String) -> VBoxContainer:
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 4)
@@ -904,6 +1032,7 @@ func _render_race_sim(layout: VBoxContainer) -> void:
 	results.add_theme_constant_override("separation", 10)
 	race.add_child(results)
 	results.add_child(_race_result_panel())
+	results.add_child(_race_history_panel())
 
 func _ensure_race_track() -> void:
 	if _race_track_id == "" or GameData.get_record_by_id("tracks", _race_track_id).is_empty():
@@ -1031,6 +1160,101 @@ func _race_result_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Time", "%+0.2fs" % float(effects.get("time_delta", 0.0))))
 	stack.add_child(_metric_row("Heat", "%+0.1f" % float(effects.get("heat_delta", 0.0))))
 	stack.add_child(_metric_row("Reliability", "%+0.1f" % float(effects.get("reliability_delta", 0.0))))
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	stack.add_child(actions)
+
+	var save_button := Button.new()
+	save_button.text = "Save Race"
+	save_button.pressed.connect(_save_current_race)
+	actions.add_child(save_button)
+	return panel
+
+func _race_history_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 10)
+	margin.add_child(stack)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	stack.add_child(header)
+	var title := _label("Race History", 18, Color.html("#111827"))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+
+	var clear_button := Button.new()
+	clear_button.text = "Clear History"
+	clear_button.pressed.connect(_clear_race_history)
+	header.add_child(clear_button)
+
+	if _race_history.is_empty():
+		stack.add_child(_body_text("No saved races yet. Run a race and save it to compare later."))
+		return panel
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 160)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stack.add_child(scroll)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	scroll.add_child(row)
+
+	for index in range(_race_history.size()):
+		row.add_child(_race_history_card(index))
+
+	return panel
+
+func _race_history_card(index: int) -> PanelContainer:
+	var record: Dictionary = _race_history[index]
+	var result: Dictionary = record.get("result", {})
+	var track: Dictionary = result.get("track", {})
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(230, 0)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 7)
+	margin.add_child(stack)
+
+	stack.add_child(_label(str(record.get("name", "Race")), 15, Color.html("#111827")))
+	stack.add_child(_body_text(str(track.get("name", "Track"))))
+	stack.add_child(_metric_row("Lap", "%ss" % result.get("lap_time", "?")))
+	stack.add_child(_metric_row("Total", "%ss" % result.get("total_time", "?")))
+	stack.add_child(_metric_row("Fit", "%s / 130" % result.get("fit_score", "?")))
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 6)
+	stack.add_child(actions)
+
+	var load_button := Button.new()
+	load_button.text = "Load"
+	load_button.pressed.connect(_load_race_history_entry.bind(index))
+	actions.add_child(load_button)
+
+	var delete_button := Button.new()
+	delete_button.text = "Delete"
+	delete_button.pressed.connect(_delete_race_history_entry.bind(index))
+	actions.add_child(delete_button)
 	return panel
 
 func _race_window_panel(window: Dictionary) -> PanelContainer:
@@ -1125,7 +1349,7 @@ func _reset_race_result() -> void:
 
 func _render_analysis(layout: VBoxContainer) -> void:
 	layout.add_child(_section_title("Analysis"))
-	var analysis := GameData.analyze_race_result(_race_result)
+	var analysis := GameData.analyze_race_result(_race_result, _race_history)
 	if analysis.has("error"):
 		layout.add_child(_body_text(str(analysis["error"])))
 		var button := Button.new()
@@ -1154,6 +1378,7 @@ func _render_analysis(layout: VBoxContainer) -> void:
 	left.add_child(_analysis_scorecard_panel(analysis))
 	left.add_child(_analysis_findings_panel(analysis))
 	right.add_child(_analysis_suggestions_panel(analysis))
+	right.add_child(_analysis_history_comparison_panel(analysis))
 	right.add_child(_analysis_decisions_panel(_race_result))
 
 func _analysis_header_panel(analysis: Dictionary) -> PanelContainer:
@@ -1274,6 +1499,33 @@ func _analysis_suggestions_panel(analysis: Dictionary) -> PanelContainer:
 		stack.add_child(_body_text("- %s" % suggestion))
 	return panel
 
+func _analysis_history_comparison_panel(analysis: Dictionary) -> PanelContainer:
+	var comparison: Dictionary = analysis.get("comparison", {})
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+	stack.add_child(_label("History Comparison", 16, Color.html("#111827")))
+
+	if comparison.is_empty():
+		stack.add_child(_body_text("No saved race on this track yet. Save race results to unlock trend comparison."))
+		return panel
+
+	stack.add_child(_body_text(str(comparison.get("summary", ""))))
+	stack.add_child(_metric_row("Current total", "%ss" % comparison.get("current_total_time", "?")))
+	stack.add_child(_metric_row("Best saved", "%ss" % comparison.get("best_total_time", "?")))
+	stack.add_child(_metric_row("Delta", "%+0.2fs" % float(comparison.get("delta_to_best", 0.0))))
+	return panel
+
 func _analysis_decisions_panel(race_result: Dictionary) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
@@ -1319,6 +1571,7 @@ func _render_debug(layout: VBoxContainer) -> void:
 	var errors = summary["errors"]
 	layout.add_child(_body_text("Loaded blocks: %s | inductions: %s | materials: %s | tracks: %s | roadmap phases: %s" % [summary["blocks"], summary["inductions"], summary["materials"], summary["tracks"], summary["roadmap_phases"]]))
 	layout.add_child(_body_text("Saved setup file: %s" % ProjectSettings.globalize_path(SAVED_SETUPS_PATH)))
+	layout.add_child(_body_text("Race history file: %s" % ProjectSettings.globalize_path(RACE_HISTORY_PATH)))
 
 	if errors.is_empty():
 		layout.add_child(_status("PASS: GameData loaded every Part 1 data collection without validation errors.", true))

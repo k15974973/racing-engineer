@@ -12,6 +12,7 @@
 - Race Sim can project lap time from the current setup on two track profiles.
 - Tactical windows are interactive and affect race time, heat, and reliability.
 - Analysis explains the latest race with a scorecard, findings, tactical review, and rebuild direction.
+- Race history persists to `user://race_history.json` and lets Analysis compare against the best saved run on the same track.
 - Current projected stats:
   - Peak power
   - Torque
@@ -25,4 +26,4 @@
 
 ## Next Phase 1 Step
 
-Save race history so Analysis can compare multiple runs and highlight improvements across setup versions.
+Add a simple progression layer that unlocks parts after clean race results.
