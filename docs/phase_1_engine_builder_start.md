@@ -8,7 +8,7 @@
 - Projection uses structured data through `GameData`, not hardcoded UI values.
 - `GameData` validates required fields, value types, numeric ranges, rpm ordering, and duplicate ids for the Phase 1 data contracts.
 - `tests/data_contract_smoke.gd` verifies the block, induction, and material contracts through Godot headless mode.
-- `tests/curve_differentiation_smoke.gd` verifies that V8 NA, Rotary Twin Turbo, and Inline-4 Supercharger curves remain clearly separated.
+- `tests/curve_differentiation_smoke.gd` verifies that V8 NA, Rotary Twin Turbo, and Inline-4 Supercharger curves remain clearly separated and internally consistent with `P = T * RPM / 7121`.
 - Basic tuning sliders update projected stats in real time.
 - Power and torque curves redraw from the current setup and tuning values.
 - Test Bench runs for 30 seconds with live RPM, boost, heat, reliability, and status telemetry.

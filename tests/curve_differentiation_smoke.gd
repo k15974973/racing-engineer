@@ -1,5 +1,9 @@
 extends SceneTree
 
+const POWER_TORQUE_RPM_DIVISOR := 7121.0
+const POWER_TOLERANCE_HP := 1.5
+const TORQUE_EPSILON_NM := 1.0
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -17,6 +21,14 @@ func _run() -> void:
 		"inline4_sc_aluminum": {
 			"name": "Inline-4 Supercharger Aluminum",
 			"setup": game_data.calculate_engine_setup("inline_4", "supercharger", "aluminum")
+		},
+		"v8_tt_aluminum": {
+			"name": "V8 Twin Turbo Aluminum",
+			"setup": game_data.calculate_engine_setup("v8", "twin_turbo", "aluminum")
+		},
+		"rotary_na_aluminum": {
+			"name": "Rotary NA Aluminum",
+			"setup": game_data.calculate_engine_setup("rotary", "na", "aluminum")
 		}
 	}
 
@@ -25,6 +37,11 @@ func _run() -> void:
 		var setup: Dictionary = item.get("setup", {})
 		if setup.has("error"):
 			_fail("%s failed: %s" % [item.get("name", key), setup.get("error", "")])
+			return
+
+		var consistency_error := _curve_consistency_error(str(item.get("name", key)), setup)
+		if consistency_error != "":
+			_fail(consistency_error)
 			return
 
 	var v8: Dictionary = configs["v8_na_standard"]["setup"]
@@ -49,18 +66,35 @@ func _run() -> void:
 		_fail("Power curves are too close on shared scale.")
 		return
 
-	print("CURVE_DIFFERENTIATION_SMOKE_OK v8=%shp@%srpm rotary=%shp@%srpm inline4=%shp@%srpm distances=%0.3f/%0.3f/%0.3f" % [
+	print("CURVE_DIFFERENTIATION_SMOKE_OK consistency=5 configs v8=%shp/%sNm@%srpm rotary=%shp/%sNm@%srpm inline4=%shp/%sNm@%srpm distances=%0.3f/%0.3f/%0.3f" % [
 		v8.get("peak_power_hp", "?"),
+		v8.get("torque_nm", "?"),
 		_peak_power_rpm(v8),
 		rotary.get("peak_power_hp", "?"),
+		rotary.get("torque_nm", "?"),
 		_peak_power_rpm(rotary),
 		inline4.get("peak_power_hp", "?"),
+		inline4.get("torque_nm", "?"),
 		_peak_power_rpm(inline4),
 		v8_rotary_distance,
 		v8_inline_distance,
 		rotary_inline_distance
 	])
 	quit(0)
+
+func _curve_consistency_error(config_name: String, setup: Dictionary) -> String:
+	var peak_power_rpm := _peak_power_rpm(setup)
+	var torque_at_peak := _sample_torque(setup, peak_power_rpm)
+	var peak_torque_reported := float(setup.get("torque_nm", 0.0))
+	var peak_power_reported := float(setup.get("peak_power_hp", 0.0))
+	var calculated_power := torque_at_peak * float(peak_power_rpm) / POWER_TORQUE_RPM_DIVISOR
+
+	if torque_at_peak > peak_torque_reported + TORQUE_EPSILON_NM:
+		return "%s: torque at peak power (%0.1f Nm) > reported peak torque (%0.1f Nm)." % [config_name, torque_at_peak, peak_torque_reported]
+	if absf(calculated_power - peak_power_reported) > POWER_TOLERANCE_HP:
+		return "%s: P/T/RPM mismatch. %0.1f Nm * %s rpm / %0.1f = %0.1f hp, reported %0.1f hp." % [config_name, torque_at_peak, peak_power_rpm, POWER_TORQUE_RPM_DIVISOR, calculated_power, peak_power_reported]
+
+	return ""
 
 func _shared_curve_distance(a_setup: Dictionary, b_setup: Dictionary, max_power: float) -> float:
 	var a_curves: Dictionary = a_setup.get("curves", {})
@@ -93,6 +127,23 @@ func _peak_power_rpm(setup: Dictionary) -> int:
 			best_value = value
 			best_rpm = int(point.get("rpm", best_rpm))
 	return best_rpm
+
+func _sample_torque(setup: Dictionary, target_rpm: int) -> float:
+	var curves: Dictionary = setup.get("curves", {})
+	var points: Array = curves.get("torque", [])
+	var best_value := 0.0
+	var best_distance := INF
+	for item in points:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var point: Dictionary = item
+		var rpm := int(point.get("rpm", 0))
+		var distance := absf(float(rpm - target_rpm))
+		if distance < best_distance:
+			best_distance = distance
+			best_value = float(point.get("value", 0.0))
+	return best_value
 
 func _fail(message: String) -> void:
 	push_error(message)

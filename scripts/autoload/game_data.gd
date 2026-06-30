@@ -5,6 +5,7 @@ const INDUCTION_SYSTEMS_PATH := "res://data/induction_systems.json"
 const MATERIALS_PATH := "res://data/materials.json"
 const ROADMAP_PHASES_PATH := "res://data/roadmap_phases.json"
 const TRACKS_PATH := "res://data/tracks.json"
+const POWER_TORQUE_RPM_DIVISOR := 7121.0
 
 var blocks: Array = []
 var inductions: Array = []
@@ -124,7 +125,7 @@ func calculate_engine_setup(block_id: String, induction_id: String, material_id:
 	tune_reliability_mult *= 1.0 + fuel_map * 0.006
 	tune_reliability_mult = clampf(tune_reliability_mult, 0.62, 1.12)
 
-	var torque_nm := int(round(285.0 * displacement_factor * _block_torque_bias(setup_block_id) * (0.72 + power_mult * 0.34) * (1.0 - lag * 0.06) * (1.0 + boost * 0.06 * boost_effect) * tune_power_mult))
+	var base_torque_nm := int(round(285.0 * displacement_factor * _block_torque_bias(setup_block_id) * (0.72 + power_mult * 0.34) * (1.0 - lag * 0.06) * (1.0 + boost * 0.06 * boost_effect) * tune_power_mult))
 	var heat_load := float(block.get("heat_factor", 1.0)) * float(induction.get("heat_mult", 1.0)) * tune_heat_mult / float(material.get("max_heat_mult", 1.0))
 	var reliability_score := 100.0 * float(block.get("reliability_factor", 1.0)) * float(induction.get("reliability_mult", 1.0)) * float(material.get("durability_mult", 1.0)) * tune_reliability_mult
 	var heat_penalty := maxf(0.0, heat_load - 1.0) * 22.0
@@ -133,8 +134,9 @@ func calculate_engine_setup(block_id: String, induction_id: String, material_id:
 	var response_score := clampf((1.0 - lag) * 100.0 * (155.0 / maxf(mass_kg, 1.0)) * (1.0 - maxf(0.0, valve_timing) * 0.008 + maxf(0.0, -valve_timing) * 0.006), 20.0, 115.0)
 	var heat_score := clampf(heat_load * 100.0, 40.0, 160.0)
 	var push_margin := clampf(reliability_score - maxf(0.0, heat_score - 100.0) * 0.35, 0.0, 120.0)
-	var curves := _build_power_torque_curves(block, induction, rpm_min, rpm_max, torque_nm, tuning)
+	var curves := _build_power_torque_curves(block, induction, rpm_min, rpm_max, base_torque_nm, tuning)
 	var peak_power_hp := int(curves.get("max_power", 0))
+	var torque_nm := int(curves.get("max_torque", 0))
 
 	var warning := "Stable baseline."
 	if push_margin < 45.0:
@@ -842,7 +844,7 @@ func _build_power_torque_curves(block: Dictionary, induction: Dictionary, rpm_mi
 		var valve_shift := 1.0 + valve_timing * (t - 0.45) * 0.018
 		var fuel_safety := 1.0 - absf(fuel_map) * 0.003
 		var torque := float(peak_torque) * base_shape * induction_gain * boost_gain * valve_shift * fuel_safety
-		var power := torque * rpm / 7127.0
+		var power := torque * rpm / POWER_TORQUE_RPM_DIVISOR
 
 		max_torque = maxf(max_torque, torque)
 		max_power = maxf(max_power, power)
