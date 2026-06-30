@@ -13,7 +13,7 @@ The project currently includes Phase 0, the canonical Phase 1 Engine Builder sli
 - Engine health bar derived from block reliability, induction reliability, and material durability.
 - Timed 30-second test bench with RPM, boost, heat, reliability, and warning telemetry.
 - Persistent named setup saving, loading, deleting, and side-by-side comparison.
-- Phase 2 Race Sim start with track selection, projected lap time, sector fit, interactive tactical windows, best-run comparison, race timeline stepper, and pre-save risk preview.
+- Phase 2 Race Sim start with track selection, projected lap time, sector fit, interactive tactical windows, run overview, setup notes, best-run comparison, race timeline stepper, and pre-save risk preview.
 - Analysis screen with scorecard, findings, tactical review, and rebuild suggestions from the latest race.
 - Persistent race history with saved race loading, deletion, and best-run comparison in Analysis.
 - Persistent progression prototype with clean-race unlock metadata and debug visibility; Phase 1 Builder options stay open.

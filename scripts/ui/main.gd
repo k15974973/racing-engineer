@@ -2233,6 +2233,7 @@ func _race_result_panel() -> PanelContainer:
 	stack.add_child(_status(str(_race_result["summary"]), float(_race_result["fit_score"]) >= 70.0))
 	if not _last_unlocks.is_empty():
 		stack.add_child(_status("Progression: %s" % _join_strings(_last_unlocks, " | "), true))
+	stack.add_child(_race_overview_panel(_race_result))
 	stack.add_child(_race_best_comparison_panel(_race_result))
 
 	var save_preview: Dictionary = _race_result.get("save_preview", {})
@@ -2281,11 +2282,12 @@ func _race_result_panel() -> PanelContainer:
 	for sector in _race_result["sectors"]:
 		var text := "%s - rating %s, weight %s\n%s" % [sector.get("name", "Sector"), sector.get("rating", "?"), sector.get("bias", "?"), sector.get("note", "")]
 		stack.add_child(_info_card(text))
+	stack.add_child(_race_setup_notes_panel(_race_result))
 
 	var timeline: Array = _race_result.get("timeline", [])
 	if not timeline.is_empty():
 		stack.add_child(_label("Race Timeline", 16, Color.html("#111827")))
-		stack.add_child(_race_timeline_stepper(timeline))
+		stack.add_child(_race_timeline_stepper(timeline, _race_result.get("race_overview", {})))
 
 	stack.add_child(_label("Tactical Windows", 16, Color.html("#111827")))
 	for window in _race_result["windows"]:
@@ -2305,6 +2307,35 @@ func _race_result_panel() -> PanelContainer:
 	save_button.text = "Save Copy" if _race_committed else "Save Race"
 	save_button.pressed.connect(_save_current_race)
 	actions.add_child(save_button)
+	return panel
+
+func _race_overview_panel(race_result: Dictionary) -> PanelContainer:
+	var overview: Dictionary = race_result.get("race_overview", {})
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+	stack.add_child(_label("Run Overview", 16, Color.html("#111827")))
+
+	if overview.is_empty():
+		stack.add_child(_body_text("Run overview is unavailable for this result."))
+		return panel
+
+	stack.add_child(_label(str(overview.get("headline", "Run summary")), 15, Color.html("#111827")))
+	stack.add_child(_metric_row("Pace", "%s (%+0.2fs)" % [overview.get("pace_label", "Pace"), float(overview.get("pace_delta", 0.0))]))
+	stack.add_child(_metric_row("Decision time", "%+0.2fs" % float(overview.get("decision_time_delta", 0.0))))
+	stack.add_child(_metric_row("Attack / Recovery / Risk", "%d / %d / %d" % [int(overview.get("attack_count", 0)), int(overview.get("recovery_count", 0)), int(overview.get("risk_count", 0))]))
+	stack.add_child(_body_text(str(overview.get("summary", ""))))
 	return panel
 
 func _race_best_comparison_panel(race_result: Dictionary) -> PanelContainer:
@@ -2340,7 +2371,62 @@ func _race_best_comparison_panel(race_result: Dictionary) -> PanelContainer:
 	stack.add_child(_status("Current run is faster than saved best." if delta < -0.01 else "Saved best is still faster or tied.", delta < -0.01))
 	return panel
 
-func _race_timeline_stepper(timeline: Array) -> PanelContainer:
+func _race_setup_notes_panel(race_result: Dictionary) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+	stack.add_child(_label("Track Setup Notes", 16, Color.html("#111827")))
+
+	var notes: Array = race_result.get("setup_notes", [])
+	if notes.is_empty():
+		stack.add_child(_body_text("No setup notes for this track yet."))
+		return panel
+
+	for item in notes:
+		if typeof(item) == TYPE_DICTIONARY:
+			var note: Dictionary = item
+			stack.add_child(_setup_note_card(note))
+	return panel
+
+func _setup_note_card(note: Dictionary) -> PanelContainer:
+	var severity := str(note.get("severity", "info"))
+	var color := Color.html("#1E40AF")
+	if severity == "good":
+		color = Color.html("#065F46")
+	elif severity == "warn":
+		color = Color.html("#92400E")
+	elif severity == "bad":
+		color = Color.html("#9F1239")
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 4)
+	margin.add_child(stack)
+	stack.add_child(_label(str(note.get("title", "Setup note")), 14, color))
+	stack.add_child(_body_text(str(note.get("body", ""))))
+	return panel
+
+func _race_timeline_stepper(timeline: Array, overview: Dictionary) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
@@ -2381,7 +2467,27 @@ func _race_timeline_stepper(timeline: Array) -> PanelContainer:
 	next.pressed.connect(_move_timeline_focus.bind(1))
 	controls.add_child(next)
 
-	stack.add_child(_race_timeline_card(event))
+	var details := HBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 10)
+	stack.add_child(details)
+
+	var event_card := _race_timeline_card(event)
+	event_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_child(event_card)
+
+	if not overview.is_empty():
+		var summary_stack := VBoxContainer.new()
+		summary_stack.custom_minimum_size = Vector2(220, 0)
+		summary_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		summary_stack.add_theme_constant_override("separation", 6)
+		details.add_child(summary_stack)
+		summary_stack.add_child(_label("Full Run", 14, Color.html("#111827")))
+		summary_stack.add_child(_metric_row("Pace", "%+0.2fs" % float(overview.get("pace_delta", 0.0))))
+		summary_stack.add_child(_metric_row("Attack", str(int(overview.get("attack_count", 0)))))
+		summary_stack.add_child(_metric_row("Recovery", str(int(overview.get("recovery_count", 0)))))
+		summary_stack.add_child(_metric_row("Risk", str(int(overview.get("risk_count", 0)))))
+		summary_stack.add_child(_body_text(str(overview.get("summary", ""))))
 	return panel
 
 func _race_timeline_card(event: Dictionary) -> PanelContainer:

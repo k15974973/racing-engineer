@@ -18,7 +18,9 @@ Phase 2 is now active. The current slice turns the earlier Race Sim prototype in
 - Boost windows are tied to forced-induction setups, so naturally aspirated builds do not receive fake boost events.
 - Race results now include a lap-ordered `timeline` object.
 - Race results now include a `save_preview` object before committing a race to history or garage effects.
-- The Race Sim UI shows pre-save risk, a timeline stepper, and decision totals.
+- Race results now include a `race_overview` object with pace label, attack count, recovery count, risk count, and a short interpretation.
+- Race results now include `setup_notes` derived from existing track bias and setup score data.
+- The Race Sim UI shows pre-save risk, run overview, setup notes, a timeline stepper, and decision totals.
 - The Race Sim UI shows the best saved run for the selected track and compares the current run against it before Analysis.
 - Analysis now reads the timeline when explaining tactical decisions.
 
@@ -57,6 +59,25 @@ Phase 2 is now active. The current slice turns the earlier Race Sim prototype in
 - `risk`
 - `summary`
 
+`race_overview` is the compact full-run summary:
+
+- `headline`
+- `pace_label`
+- `pace_delta`
+- `attack_count`
+- `recovery_count`
+- `risk_count`
+- `final_heat`
+- `final_reliability`
+- `decision_time_delta`
+- `summary`
+
+`setup_notes` is a list of derived track/setup notes:
+
+- `title`
+- `body`
+- `severity`
+
 ## Test Coverage
 
 `tests/race_sim_smoke.gd` now verifies:
@@ -74,6 +95,8 @@ Phase 2 is now active. The current slice turns the earlier Race Sim prototype in
 - timeline final heat/reliability matching the race result,
 - save preview final heat/reliability matching the race result,
 - save preview decision deltas matching decision effects,
+- race overview pace/counts matching timeline and result data,
+- setup notes being readable dictionaries,
 - aggressive decisions trading heat/reliability for faster total time,
 - conservative decisions trading time for safer heat/reliability,
 - boosted setups producing Boost Spike windows,
@@ -100,7 +123,6 @@ Heat penalty was tuned so a cool setup can gain time by pushing, while hot or fr
 
 ## Next Recommended Phase 2 Work
 
-- Add a compact full-run summary beside the timeline stepper.
-- Add per-track setup notes without expanding the data model.
 - Add simple comparison filters for saved runs on the same track.
+- Add a compact saved-run inspector for race history cards.
 - Add one more track only after the two current tracks keep producing distinct tactical decisions.

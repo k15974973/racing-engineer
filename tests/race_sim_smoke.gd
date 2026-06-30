@@ -140,6 +140,10 @@ func _assert_race_result(result: Dictionary, label: String) -> bool:
 		return false
 	if not _assert_save_preview(result, label):
 		return false
+	if not _assert_race_overview(result, label):
+		return false
+	if not _assert_setup_notes(result, label):
+		return false
 
 	return _assert_decision_effect_totals(result, label)
 
@@ -211,6 +215,63 @@ func _assert_save_preview(result: Dictionary, label: String) -> bool:
 	if str(preview.get("risk", "")) == "" or str(preview.get("summary", "")) == "":
 		_fail("%s save preview should include risk and summary text." % label)
 		return false
+
+	return true
+
+func _assert_race_overview(result: Dictionary, label: String) -> bool:
+	var overview: Dictionary = result.get("race_overview", {})
+	if overview.is_empty():
+		_fail("%s should include race_overview." % label)
+		return false
+
+	for key in ["headline", "pace_label", "summary"]:
+		if str(overview.get(key, "")) == "":
+			_fail("%s race_overview missing readable %s." % [label, key])
+			return false
+
+	if absf(float(overview.get("pace_delta", 0.0)) - float(result.get("delta_vs_base", 0.0))) > TIME_EPSILON:
+		_fail("%s race_overview pace_delta should match delta_vs_base." % label)
+		return false
+
+	var attacks := 0
+	var recoveries := 0
+	var risks := 0
+	for item in result.get("timeline", []):
+		var event: Dictionary = item
+		if float(event.get("time_delta", 0.0)) < -0.01:
+			attacks += 1
+		if str(event.get("risk", "")) == "Recovery":
+			recoveries += 1
+		if str(event.get("risk", "")) in ["Risk", "Critical"]:
+			risks += 1
+
+	if int(overview.get("attack_count", -1)) != attacks:
+		_fail("%s race_overview attack_count should match timeline." % label)
+		return false
+	if int(overview.get("recovery_count", -1)) != recoveries:
+		_fail("%s race_overview recovery_count should match timeline." % label)
+		return false
+	if int(overview.get("risk_count", -1)) != risks:
+		_fail("%s race_overview risk_count should match timeline." % label)
+		return false
+
+	return true
+
+func _assert_setup_notes(result: Dictionary, label: String) -> bool:
+	var notes: Array = result.get("setup_notes", [])
+	if notes.is_empty():
+		_fail("%s should include setup_notes." % label)
+		return false
+
+	for item in notes:
+		if typeof(item) != TYPE_DICTIONARY:
+			_fail("%s contains a non-dictionary setup note." % label)
+			return false
+
+		var note: Dictionary = item
+		if str(note.get("title", "")) == "" or str(note.get("body", "")) == "" or str(note.get("severity", "")) == "":
+			_fail("%s contains an incomplete setup note." % label)
+			return false
 
 	return true
 

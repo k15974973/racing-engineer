@@ -269,6 +269,8 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 	var total_time := maxf(1.0, lap_time * float(laps) + float(decision_effects.get("time_delta", 0.0)))
 	var final_lap_time := total_time / maxf(float(laps), 1.0)
 	var delta_vs_base := final_lap_time - float(track.get("base_lap_time", 90.0))
+	var race_overview := _build_race_overview(timeline, decision_effects, fit_score, delta_vs_base, effective_heat, effective_reliability)
+	var setup_notes := _build_track_setup_notes(track, setup, power_score, technical_score, endurance_score)
 
 	return {
 		"track": track,
@@ -288,6 +290,8 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 		"windows": windows,
 		"timeline": timeline,
 		"save_preview": _build_race_save_preview(effective_heat, effective_reliability, decision_effects, fit_score),
+		"race_overview": race_overview,
+		"setup_notes": setup_notes,
 		"summary": _race_summary(fit_score, effective_heat, effective_reliability)
 	}
 
@@ -700,6 +704,99 @@ func _race_save_preview_summary(risk: String, heat: float, reliability: float) -
 			return "Save is allowed, but the setup does not fit the track well yet."
 		_:
 			return "Save is clean enough for comparison and later analysis."
+
+func _build_race_overview(timeline: Array, decision_effects: Dictionary, fit_score: float, delta_vs_base: float, effective_heat: float, effective_reliability: float) -> Dictionary:
+	var attack_count := 0
+	var recovery_count := 0
+	var risk_count := 0
+	for item in timeline:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var event: Dictionary = item
+		var time_delta := float(event.get("time_delta", 0.0))
+		var risk := str(event.get("risk", "Stable"))
+		if time_delta < -0.01:
+			attack_count += 1
+		if risk == "Recovery":
+			recovery_count += 1
+		if risk in ["Risk", "Critical"]:
+			risk_count += 1
+
+	var pace_label := "Baseline pace"
+	if delta_vs_base < -0.01:
+		pace_label = "Faster than baseline"
+	elif delta_vs_base > 0.01:
+		pace_label = "Slower than baseline"
+	var headline := "Balanced run"
+	if risk_count >= 2:
+		headline = "Fast but risky"
+	elif recovery_count > attack_count:
+		headline = "Conservative recovery run"
+	elif fit_score >= 92.0 and delta_vs_base <= 0.0:
+		headline = "Strong track match"
+	elif fit_score < 72.0:
+		headline = "Weak track fit"
+
+	return {
+		"headline": headline,
+		"pace_label": pace_label,
+		"pace_delta": snappedf(delta_vs_base, 0.01),
+		"attack_count": attack_count,
+		"recovery_count": recovery_count,
+		"risk_count": risk_count,
+		"final_heat": snappedf(effective_heat, 0.1),
+		"final_reliability": snappedf(effective_reliability, 0.1),
+		"decision_time_delta": decision_effects.get("time_delta", 0.0),
+		"summary": _race_overview_summary(headline, attack_count, recovery_count, risk_count)
+	}
+
+func _race_overview_summary(headline: String, attack_count: int, recovery_count: int, risk_count: int) -> String:
+	match headline:
+		"Fast but risky":
+			return "%d risky window(s). The pace gain is being bought with heat or reliability." % risk_count
+		"Conservative recovery run":
+			return "%d recovery window(s). The run protects the engine more than it attacks." % recovery_count
+		"Strong track match":
+			return "Track fit and decisions are working together. Compare saved variants for smaller gains."
+		"Weak track fit":
+			return "The setup is not matching this track profile. Rebuild before chasing tactics."
+		_:
+			return "%d attack window(s), %d recovery window(s), %d risky window(s)." % [attack_count, recovery_count, risk_count]
+
+func _build_track_setup_notes(track: Dictionary, setup: Dictionary, power_score: float, technical_score: float, endurance_score: float) -> Array:
+	var notes: Array = []
+	var straight_bias := float(track.get("straight_bias", 0.0))
+	var corner_bias := float(track.get("corner_bias", 0.0))
+	var endurance_bias := float(track.get("endurance_bias", 0.0))
+	var heat := float(setup.get("heat_score", 100.0))
+	var response := float(setup.get("response_score", 80.0))
+
+	if straight_bias >= 0.50:
+		notes.append(_setup_note("Straight demand", "Power sector is %0.1f on a track weighted %0.2f toward straights." % [power_score, straight_bias], "good" if power_score >= 82.0 else "warn"))
+
+	if corner_bias >= 0.45:
+		notes.append(_setup_note("Corner demand", "Technical sector is %0.1f. Response %0.1f decides how cleanly this setup exits corners." % [technical_score, response], "good" if technical_score >= 82.0 else "warn"))
+
+	if endurance_bias >= 0.15:
+		notes.append(_setup_note("Endurance demand", "Endurance sector is %0.1f. Heat %0.1f and reliability margin decide whether repeated push calls are safe." % [endurance_score, heat], "good" if endurance_score >= 82.0 else "warn"))
+
+	if heat >= 120.0:
+		notes.append(_setup_note("Heat warning", "Base heat is already %0.1f before race decisions. Cooling choices may be worth more than attack choices." % heat, "bad"))
+	elif heat <= 92.0:
+		notes.append(_setup_note("Thermal headroom", "Base heat is %0.1f, leaving room to attack if reliability remains stable." % heat, "good"))
+
+	if notes.is_empty():
+		notes.append(_setup_note("General fit", "No single track demand dominates. Use the timeline to compare decision tradeoffs.", "info"))
+
+	return notes.slice(0, min(notes.size(), 4))
+
+func _setup_note(title: String, body: String, severity: String) -> Dictionary:
+	return {
+		"title": title,
+		"body": body,
+		"severity": severity
+	}
 
 func _default_choice_id(choices: Array) -> String:
 	if choices.is_empty():
