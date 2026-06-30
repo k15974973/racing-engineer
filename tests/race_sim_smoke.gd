@@ -136,7 +136,83 @@ func _assert_race_result(result: Dictionary, label: String) -> bool:
 			_fail("%s contains an incomplete tactical window." % label)
 			return false
 
+	if not _assert_timeline(result, label):
+		return false
+	if not _assert_save_preview(result, label):
+		return false
+
 	return _assert_decision_effect_totals(result, label)
+
+func _assert_timeline(result: Dictionary, label: String) -> bool:
+	var windows: Array = result.get("windows", [])
+	var timeline: Array = result.get("timeline", [])
+	if timeline.size() != windows.size():
+		_fail("%s timeline should match tactical window count." % label)
+		return false
+
+	var laps := int(result.get("laps", 0))
+	var last_lap := 0
+	var cumulative_time := 0.0
+	var final_heat := 0.0
+	var final_reliability := 0.0
+	for index in range(timeline.size()):
+		if typeof(timeline[index]) != TYPE_DICTIONARY:
+			_fail("%s contains a non-dictionary timeline event." % label)
+			return false
+
+		var event: Dictionary = timeline[index]
+		var lap := int(event.get("lap", 0))
+		if lap < 1 or lap > laps or lap < last_lap:
+			_fail("%s timeline lap order is invalid." % label)
+			return false
+
+		last_lap = lap
+		cumulative_time += float(event.get("time_delta", 0.0))
+		if absf(cumulative_time - float(event.get("cumulative_time_delta", 0.0))) > TIME_EPSILON:
+			_fail("%s timeline cumulative time mismatch." % label)
+			return false
+
+		if str(event.get("marker", "")) == "" or str(event.get("window", "")) == "" or str(event.get("choice", "")) == "":
+			_fail("%s timeline event is missing readable labels." % label)
+			return false
+
+		final_heat = float(event.get("projected_heat", 0.0))
+		final_reliability = float(event.get("projected_reliability", 0.0))
+
+	var effects: Dictionary = result.get("decision_effects", {})
+	if absf(cumulative_time - float(effects.get("time_delta", 0.0))) > TIME_EPSILON:
+		_fail("%s timeline cumulative time should equal decision effect time." % label)
+		return false
+	if absf(final_heat - float(result.get("effective_heat", 0.0))) > STAT_EPSILON:
+		_fail("%s timeline final heat should equal race effective heat." % label)
+		return false
+	if absf(final_reliability - float(result.get("effective_reliability", 0.0))) > STAT_EPSILON:
+		_fail("%s timeline final reliability should equal race effective reliability." % label)
+		return false
+
+	return true
+
+func _assert_save_preview(result: Dictionary, label: String) -> bool:
+	var preview: Dictionary = result.get("save_preview", {})
+	if preview.is_empty():
+		_fail("%s should include a pre-save preview." % label)
+		return false
+
+	var effects: Dictionary = result.get("decision_effects", {})
+	if absf(float(preview.get("final_heat", 0.0)) - float(result.get("effective_heat", 0.0))) > STAT_EPSILON:
+		_fail("%s save preview heat should match effective heat." % label)
+		return false
+	if absf(float(preview.get("final_reliability", 0.0)) - float(result.get("effective_reliability", 0.0))) > STAT_EPSILON:
+		_fail("%s save preview reliability should match effective reliability." % label)
+		return false
+	if absf(float(preview.get("decision_time_delta", 0.0)) - float(effects.get("time_delta", 0.0))) > TIME_EPSILON:
+		_fail("%s save preview time should match decision effects." % label)
+		return false
+	if str(preview.get("risk", "")) == "" or str(preview.get("summary", "")) == "":
+		_fail("%s save preview should include risk and summary text." % label)
+		return false
+
+	return true
 
 func _assert_decision_effect_totals(result: Dictionary, label: String) -> bool:
 	var windows: Array = result.get("windows", [])

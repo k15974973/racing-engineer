@@ -2226,6 +2226,15 @@ func _race_result_panel() -> PanelContainer:
 	if not _last_unlocks.is_empty():
 		stack.add_child(_status("Progression: %s" % _join_strings(_last_unlocks, " | "), true))
 
+	var save_preview: Dictionary = _race_result.get("save_preview", {})
+	if not save_preview.is_empty():
+		stack.add_child(_label("Pre-Save Preview", 16, Color.html("#111827")))
+		stack.add_child(_metric_row("Decision time", "%+0.2fs" % float(save_preview.get("decision_time_delta", 0.0))))
+		stack.add_child(_metric_row("Decision heat", "%+0.1f" % float(save_preview.get("decision_heat_delta", 0.0))))
+		stack.add_child(_metric_row("Decision reliability", "%+0.1f" % float(save_preview.get("decision_reliability_delta", 0.0))))
+		stack.add_child(_metric_row("Save risk", str(save_preview.get("risk", "Stable"))))
+		stack.add_child(_status(str(save_preview.get("summary", "")), str(save_preview.get("risk", "")) != "Critical"))
+
 	var damage_report := _current_damage_report()
 	if not damage_report.is_empty():
 		stack.add_child(_label("Garage Impact", 16, Color.html("#111827")))
@@ -2264,6 +2273,14 @@ func _race_result_panel() -> PanelContainer:
 		var text := "%s - rating %s, weight %s\n%s" % [sector.get("name", "Sector"), sector.get("rating", "?"), sector.get("bias", "?"), sector.get("note", "")]
 		stack.add_child(_info_card(text))
 
+	var timeline: Array = _race_result.get("timeline", [])
+	if not timeline.is_empty():
+		stack.add_child(_label("Race Timeline", 16, Color.html("#111827")))
+		for item in timeline:
+			if typeof(item) == TYPE_DICTIONARY:
+				var event: Dictionary = item
+				stack.add_child(_race_timeline_card(event))
+
 	stack.add_child(_label("Tactical Windows", 16, Color.html("#111827")))
 	for window in _race_result["windows"]:
 		stack.add_child(_race_window_panel(window))
@@ -2283,6 +2300,23 @@ func _race_result_panel() -> PanelContainer:
 	save_button.pressed.connect(_save_current_race)
 	actions.add_child(save_button)
 	return panel
+
+func _race_timeline_card(event: Dictionary) -> PanelContainer:
+	var text := "%s #%s - %s -> %s\nTime %+0.2fs (%+0.2fs cumulative) | Heat %s (%+0.1f) | Reliability %s (%+0.1f) | %s\n%s" % [
+		event.get("marker", "Lap"),
+		event.get("sequence", "?"),
+		event.get("window", "Window"),
+		event.get("choice", "Choice"),
+		float(event.get("time_delta", 0.0)),
+		float(event.get("cumulative_time_delta", 0.0)),
+		event.get("projected_heat", "?"),
+		float(event.get("heat_delta", 0.0)),
+		event.get("projected_reliability", "?"),
+		float(event.get("reliability_delta", 0.0)),
+		event.get("risk", "Stable"),
+		event.get("note", "")
+	]
+	return _info_card(text)
 
 func _race_history_panel() -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -2684,10 +2718,27 @@ func _analysis_decisions_panel(race_result: Dictionary) -> PanelContainer:
 	stack.add_child(_metric_row("Heat", "%+0.1f" % float(effects.get("heat_delta", 0.0))))
 	stack.add_child(_metric_row("Reliability", "%+0.1f" % float(effects.get("reliability_delta", 0.0))))
 
-	for item in effects.get("log", []):
-		var decision: Dictionary = item
-		var text := "%s - %s\n%s" % [decision.get("window", "Window"), decision.get("choice", "Choice"), decision.get("note", "")]
-		stack.add_child(_info_card(text))
+	var timeline: Array = race_result.get("timeline", [])
+	if not timeline.is_empty():
+		for item in timeline:
+			if typeof(item) == TYPE_DICTIONARY:
+				var event: Dictionary = item
+				var text := "%s - %s / %s\nTime %+0.2fs, heat %+0.1f, reliability %+0.1f. Result: heat %s, reliability %s." % [
+					event.get("marker", "Lap"),
+					event.get("window", "Window"),
+					event.get("choice", "Choice"),
+					float(event.get("time_delta", 0.0)),
+					float(event.get("heat_delta", 0.0)),
+					float(event.get("reliability_delta", 0.0)),
+					event.get("projected_heat", "?"),
+					event.get("projected_reliability", "?")
+				]
+				stack.add_child(_info_card(text))
+	else:
+		for item in effects.get("log", []):
+			var decision: Dictionary = item
+			var text := "%s - %s\n%s" % [decision.get("window", "Window"), decision.get("choice", "Choice"), decision.get("note", "")]
+			stack.add_child(_info_card(text))
 
 	return panel
 

@@ -249,6 +249,7 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 	var decision_effects := _calculate_decision_effects(windows, decisions)
 	var effective_heat := clampf(heat + float(decision_effects.get("heat_delta", 0.0)), 40.0, 180.0)
 	var effective_reliability := clampf(reliability + float(decision_effects.get("reliability_delta", 0.0)), 0.0, 120.0)
+	var timeline := _build_race_timeline(windows, decision_effects, heat, reliability, int(track.get("laps", 3)))
 
 	var straight_bias := float(track.get("straight_bias", 0.4))
 	var corner_bias := float(track.get("corner_bias", 0.4))
@@ -285,6 +286,8 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 		"decision_effects": decision_effects,
 		"sectors": _build_race_sectors(power_score, technical_score, endurance_score, straight_bias, corner_bias, endurance_bias),
 		"windows": windows,
+		"timeline": timeline,
+		"save_preview": _build_race_save_preview(effective_heat, effective_reliability, decision_effects, fit_score),
 		"summary": _race_summary(fit_score, effective_heat, effective_reliability)
 	}
 
@@ -584,7 +587,8 @@ func _calculate_decision_effects(windows: Array, decisions: Dictionary) -> Dicti
 	var reliability_delta := 0.0
 	var log: Array = []
 
-	for window in windows:
+	for index in range(windows.size()):
+		var window: Dictionary = windows[index]
 		var window_type := str(window.get("type", "Window"))
 		var choices: Array = window.get("choices", [])
 		var selected_id := str(decisions.get(window_type, _default_choice_id(choices)))
@@ -598,7 +602,9 @@ func _calculate_decision_effects(windows: Array, decisions: Dictionary) -> Dicti
 		heat_delta += float(choice.get("heat_delta", 0.0))
 		reliability_delta += float(choice.get("reliability_delta", 0.0))
 		log.append({
+			"index": index,
 			"window": window_type,
+			"choice_id": selected_id,
 			"choice": choice.get("label", selected_id),
 			"note": choice.get("note", ""),
 			"time_delta": snappedf(float(choice.get("time_delta", 0.0)), 0.01),
@@ -612,6 +618,88 @@ func _calculate_decision_effects(windows: Array, decisions: Dictionary) -> Dicti
 		"reliability_delta": snappedf(reliability_delta, 0.1),
 		"log": log
 	}
+
+func _build_race_timeline(windows: Array, decision_effects: Dictionary, base_heat: float, base_reliability: float, laps: int) -> Array:
+	var timeline: Array = []
+	var log: Array = decision_effects.get("log", [])
+	var heat_cursor := base_heat
+	var reliability_cursor := base_reliability
+	var cumulative_time_delta := 0.0
+	var safe_laps := maxi(laps, 1)
+	var window_count := maxi(windows.size(), 1)
+
+	for index in range(windows.size()):
+		var window: Dictionary = windows[index]
+		var entry: Dictionary = {}
+		if index < log.size() and typeof(log[index]) == TYPE_DICTIONARY:
+			entry = log[index]
+
+		var lap := clampi(int(floor(float(index) * float(safe_laps) / float(window_count))) + 1, 1, safe_laps)
+		var time_delta := float(entry.get("time_delta", 0.0))
+		var heat_delta := float(entry.get("heat_delta", 0.0))
+		var reliability_delta := float(entry.get("reliability_delta", 0.0))
+		cumulative_time_delta += time_delta
+		heat_cursor = clampf(heat_cursor + heat_delta, 40.0, 180.0)
+		reliability_cursor = clampf(reliability_cursor + reliability_delta, 0.0, 120.0)
+
+		timeline.append({
+			"index": index,
+			"sequence": index + 1,
+			"lap": lap,
+			"marker": "Lap %d/%d" % [lap, safe_laps],
+			"window": window.get("type", entry.get("window", "Window")),
+			"choice": entry.get("choice", "Choice"),
+			"choice_id": entry.get("choice_id", ""),
+			"note": entry.get("note", ""),
+			"time_delta": snappedf(time_delta, 0.01),
+			"heat_delta": snappedf(heat_delta, 0.1),
+			"reliability_delta": snappedf(reliability_delta, 0.1),
+			"cumulative_time_delta": snappedf(cumulative_time_delta, 0.01),
+			"projected_heat": snappedf(heat_cursor, 0.1),
+			"projected_reliability": snappedf(reliability_cursor, 0.1),
+			"risk": _race_timeline_risk(heat_cursor, reliability_cursor, heat_delta, reliability_delta)
+		})
+
+	return timeline
+
+func _race_timeline_risk(heat: float, reliability: float, heat_delta: float, reliability_delta: float) -> String:
+	if heat >= 135.0 or reliability < 45.0:
+		return "Critical"
+	if heat >= 120.0 or reliability < 62.0 or heat_delta >= 10.0 or reliability_delta <= -7.0:
+		return "Risk"
+	if heat_delta < 0.0 and reliability_delta > 0.0:
+		return "Recovery"
+	return "Stable"
+
+func _build_race_save_preview(effective_heat: float, effective_reliability: float, decision_effects: Dictionary, fit_score: float) -> Dictionary:
+	var risk := "Stable"
+	if effective_heat >= 135.0 or effective_reliability < 45.0:
+		risk = "Critical"
+	elif effective_heat >= 120.0 or effective_reliability < 62.0:
+		risk = "Risk"
+	elif fit_score < 72.0:
+		risk = "Low Fit"
+
+	return {
+		"final_heat": snappedf(effective_heat, 0.1),
+		"final_reliability": snappedf(effective_reliability, 0.1),
+		"decision_time_delta": decision_effects.get("time_delta", 0.0),
+		"decision_heat_delta": decision_effects.get("heat_delta", 0.0),
+		"decision_reliability_delta": decision_effects.get("reliability_delta", 0.0),
+		"risk": risk,
+		"summary": _race_save_preview_summary(risk, effective_heat, effective_reliability)
+	}
+
+func _race_save_preview_summary(risk: String, heat: float, reliability: float) -> String:
+	match risk:
+		"Critical":
+			return "Saving this run will lock in a high-risk result: heat %0.1f, reliability %0.1f." % [heat, reliability]
+		"Risk":
+			return "Save is allowed, but the run carries visible heat or reliability risk."
+		"Low Fit":
+			return "Save is allowed, but the setup does not fit the track well yet."
+		_:
+			return "Save is clean enough for comparison and later analysis."
 
 func _default_choice_id(choices: Array) -> String:
 	if choices.is_empty():
