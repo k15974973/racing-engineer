@@ -407,6 +407,7 @@ func _builder_summary_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Mass", "%s kg" % setup["mass_kg"]))
 	stack.add_child(_metric_row("RPM range", "%s-%s rpm" % [setup["rpm_min"], setup["rpm_max"]]))
 
+	stack.add_child(_meter_row("Engine health", float(setup.get("engine_health_score", 100.0)), 120.0, true))
 	stack.add_child(_meter_row("Heat load", float(setup["heat_score"]), 160.0, false))
 	stack.add_child(_meter_row("Reliability", float(setup["reliability_score"]), 120.0, true))
 	stack.add_child(_meter_row("Throttle response", float(setup["response_score"]), 120.0, true))
@@ -847,6 +848,7 @@ func _saved_setup_card(index: int) -> PanelContainer:
 	stack.add_child(_body_text(identity))
 	stack.add_child(_metric_row("Power", "%s hp" % setup["peak_power_hp"]))
 	stack.add_child(_metric_row("Torque", "%s Nm" % setup["torque_nm"]))
+	stack.add_child(_metric_row("Health", "%s / 120" % setup.get("engine_health_score", "?")))
 	stack.add_child(_metric_row("Heat", "%s / 160" % setup["heat_score"]))
 	stack.add_child(_metric_row("Reliability", "%s / 120" % setup["reliability_score"]))
 	stack.add_child(_metric_row("Push", "%s / 120" % setup["push_margin"]))

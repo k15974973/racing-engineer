@@ -7,9 +7,10 @@ The project currently includes Phase 0, the canonical Phase 1 Engine Builder sli
 - Structured engine data for blocks, induction systems, and materials.
 - `GameData` autoload for loading and validating data.
 - Interactive Engine Builder selection for block, induction, and material.
-- Basic parameter tuning for compression, boost, valve timing, fuel map, and ignition timing.
+- Prototype parameter tuning controls exist, but continuous tuning is deferred from canonical Phase 1 to Phase 5.
 - Realtime power and torque curve visualization.
 - Projected setup stats for power, torque, mass, RPM range, heat, reliability, response, and push margin.
+- Engine health bar derived from block reliability, induction reliability, and material durability.
 - Timed 30-second test bench with RPM, boost, heat, reliability, and warning telemetry.
 - Persistent named setup saving, loading, deleting, and side-by-side comparison.
 - Race Sim prototype with track selection, projected lap time, sector fit, and interactive tactical windows.

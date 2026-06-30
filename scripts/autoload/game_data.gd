@@ -127,7 +127,8 @@ func calculate_engine_setup(block_id: String, induction_id: String, material_id:
 
 	var base_torque_nm := int(round(285.0 * displacement_factor * _block_torque_bias(setup_block_id) * (0.72 + power_mult * 0.34) * (1.0 - lag * 0.06) * (1.0 + boost * 0.06 * boost_effect) * tune_power_mult))
 	var heat_load := float(block.get("heat_factor", 1.0)) * float(induction.get("heat_mult", 1.0)) * tune_heat_mult / float(material.get("max_heat_mult", 1.0))
-	var reliability_score := 100.0 * float(block.get("reliability_factor", 1.0)) * float(induction.get("reliability_mult", 1.0)) * float(material.get("durability_mult", 1.0)) * tune_reliability_mult
+	var engine_health_score := clampf(100.0 * float(block.get("reliability_factor", 1.0)) * float(induction.get("reliability_mult", 1.0)) * float(material.get("durability_mult", 1.0)), 0.0, 120.0)
+	var reliability_score := engine_health_score * tune_reliability_mult
 	var heat_penalty := maxf(0.0, heat_load - 1.0) * 22.0
 	reliability_score = clampf(reliability_score - heat_penalty, 0.0, 120.0)
 
@@ -157,6 +158,7 @@ func calculate_engine_setup(block_id: String, induction_id: String, material_id:
 		"mass_kg": snappedf(mass_kg, 0.1),
 		"peak_power_hp": peak_power_hp,
 		"torque_nm": torque_nm,
+		"engine_health_score": snappedf(engine_health_score, 0.1),
 		"heat_score": snappedf(heat_score, 0.1),
 		"reliability_score": snappedf(reliability_score, 0.1),
 		"response_score": snappedf(response_score, 0.1),

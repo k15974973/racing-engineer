@@ -16,7 +16,7 @@ The target first experience is:
 
 `Build -> Race -> Analyze -> Rebuild`
 
-Build: The player chooses an engine block, induction system, and material, then tunes parameters such as compression ratio, boost pressure, valve timing, fuel map, and ignition timing. Every choice should visibly affect projected power, torque, heat, weight, and durability.
+Build: The player chooses an engine block, induction system, and material. Every Phase 1 choice should visibly affect projected power, torque, heat, weight, health, and durability. Continuous tuning such as compression ratio, boost pressure, valve timing, fuel map, and ignition timing is deferred to Phase 5.
 
 Race: The simulation converts the engine setup plus track profile into lap-time behavior. The player does not drive corner by corner. Instead, they act as race engineer during short tactical windows that ask whether to push, cut, cool, conserve, or adjust mapping.
 
@@ -26,7 +26,7 @@ Rebuild: The player returns to the builder with useful direction, not a perfect 
 
 ## Screen Flow
 
-- Engine Builder: block selection, induction selection, material selection, parameter tuning, and test bench.
+- Engine Builder: block selection, induction selection, material selection, engine health, and test bench.
 - Race Sim: track selection, race camera placeholder, tactical windows, and live telemetry.
 - Analysis: lap timeline, engine report card, setup comparison, and suggested adjustment direction.
 - Roadmap: phase checklist for development visibility.

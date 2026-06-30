@@ -24,7 +24,21 @@ func _run() -> void:
 			_fail("%s loaded no records." % contract.get("label", key))
 			return
 
-	print("DATA_CONTRACT_SMOKE_OK blocks=%s inductions=%s materials=%s" % [summary.get("blocks", 0), summary.get("inductions", 0), summary.get("materials", 0)])
+	var setup: Dictionary = game_data.calculate_engine_setup("v8", "na", "aluminum")
+	if setup.has("error"):
+		_fail("Health setup failed: %s" % setup.get("error", ""))
+		return
+
+	var block: Dictionary = setup.get("block", {})
+	var induction: Dictionary = setup.get("induction", {})
+	var material: Dictionary = setup.get("material", {})
+	var expected_health := snappedf(clampf(100.0 * float(block.get("reliability_factor", 1.0)) * float(induction.get("reliability_mult", 1.0)) * float(material.get("durability_mult", 1.0)), 0.0, 120.0), 0.1)
+	var actual_health := float(setup.get("engine_health_score", -1.0))
+	if not is_equal_approx(actual_health, expected_health):
+		_fail("Engine health mismatch. Expected %s, got %s." % [expected_health, actual_health])
+		return
+
+	print("DATA_CONTRACT_SMOKE_OK blocks=%s inductions=%s materials=%s health=%s" % [summary.get("blocks", 0), summary.get("inductions", 0), summary.get("materials", 0), actual_health])
 	quit(0)
 
 func _fail(message: String) -> void:

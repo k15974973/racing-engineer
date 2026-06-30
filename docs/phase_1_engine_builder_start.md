@@ -9,8 +9,7 @@
 - `GameData` validates required fields, value types, numeric ranges, rpm ordering, and duplicate ids for the Phase 1 data contracts.
 - `tests/data_contract_smoke.gd` verifies the block, induction, and material contracts through Godot headless mode.
 - `tests/curve_differentiation_smoke.gd` verifies that V8 NA, Rotary Twin Turbo, and Inline-4 Supercharger curves remain clearly separated and internally consistent with `P = T * RPM / 7121`.
-- Basic tuning sliders update projected stats in real time.
-- Power and torque curves redraw from the current setup and tuning values.
+- Power and torque curves redraw from the current setup.
 - Test Bench runs for 30 seconds with live RPM, boost, heat, reliability, and status telemetry.
 - Setups can be saved, loaded, deleted, persisted to `user://saved_setups.json`, and compared side by side.
 - Current projected stats:
@@ -18,6 +17,7 @@
   - Torque
   - Mass
   - RPM range
+  - Engine health
   - Heat load
   - Reliability
   - Throttle response
@@ -36,7 +36,8 @@ The following systems are implemented in the running prototype, but they are not
 - Garage condition and local credits persist to `user://garage_state.json`; saved race wear can degrade current performance until repaired.
 - Hybrid slot condition tracks block, induction, and material damage separately and applies different stat penalties.
 - Service recommendations and threshold events explain which slot group needs attention.
+- Continuous parameter tuning controls exist in the prototype, but are deferred from canonical Phase 1 to Phase 5 because the validated 3-slot curve model should stay stable while Phase 2 tests tactical race decisions.
 
-## Next Canonical Phase 1 Step
+## Next Canonical Step
 
-Polish the Engine Builder interaction layer before expanding later-phase systems: clearer selector details, tighter comparison readability, and better empty/error states. Race, analysis, economy, and wear should be treated as prototype learnings until the roadmap is revised.
+Move to Phase 2 Race Sim using the validated 3-slot builder as input. Race, analysis, economy, and wear should be treated as prototype learnings until the roadmap is revised.

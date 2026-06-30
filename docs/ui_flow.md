@@ -1,6 +1,6 @@
 # Engine Builder UI Flow
 
-This is the first UI map for Phase 1. It keeps the player moving left to right from identity choices into tuning and validation.
+This is the first UI map for Phase 1. It keeps the player moving left to right from identity choices into validation.
 
 ## Primary Flow
 
@@ -17,15 +17,19 @@ This is the first UI map for Phase 1. It keeps the player moving left to right f
    - Show mass, heat ceiling, and durability tradeoffs.
    - All block, induction, and material choices remain available in Phase 1; progression gating is deferred.
 
-4. Parameter Tuning
-   - Tune compression ratio, boost pressure, valve timing, fuel map, and ignition timing.
-   - Preview power, torque, heat risk, mass, and reliability margin in real time.
+4. Engine Health
+   - Show the combined health from block reliability, induction reliability, and material durability.
+   - Keep the score independent from race wear so Phase 1 stays readable.
 
 5. Test Bench
    - Run a short neutral engine test before racing.
    - Display RPM, boost, temperature, projected durability, and warning states.
 
-6. Garage Condition
+6. Deferred Parameter Tuning
+   - Compression ratio, boost pressure, valve timing, fuel map, and ignition timing move to Phase 5.
+   - Do not treat continuous tuning as canonical Phase 1 scope.
+
+7. Garage Condition
    - Preview wear from saved race outcomes.
    - Track credits, service cost, and budget repair before committing another run.
    - Show block, induction, and material wear separately so repair risk matches the build.
