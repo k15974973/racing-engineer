@@ -33,8 +33,8 @@ func validate_engine_data() -> bool:
 	ok = _validate_engine_blocks() and ok
 	ok = _validate_induction_systems() and ok
 	ok = _validate_materials() and ok
-	ok = _validate_records(roadmap_phases, ["id", "name", "duration", "goal", "deliverable"], "roadmap phase") and ok
-	ok = _validate_records(tracks, ["id", "name", "laps", "length_km", "base_lap_time", "straight_bias", "corner_bias", "endurance_bias", "heat_stress", "description"], "track") and ok
+	ok = _validate_records(roadmap_phases, ["id", "name", "duration", "goal", "deliverable"], "roadmap phase", ROADMAP_PHASES_PATH) and ok
+	ok = _validate_records(tracks, ["id", "name", "laps", "length_km", "base_lap_time", "straight_bias", "corner_bias", "endurance_bias", "heat_stress", "description"], "track", TRACKS_PATH) and ok
 	return ok
 
 func get_summary() -> Dictionary:
@@ -95,6 +95,7 @@ func calculate_engine_setup(block_id: String, induction_id: String, material_id:
 	var displacement_factor := clampf(float(block.get("mass", 150.0)) / 160.0, 0.72, 1.35)
 	var power_mult := float(induction.get("power_mult", 1.0))
 	var lag := float(induction.get("lag", 0.0))
+	var setup_block_id := str(block.get("id", ""))
 	var compression := clampf(float(tuning.get("compression", 10.5)), 8.0, 14.0)
 	var boost := clampf(float(tuning.get("boost", 0.0)), 0.0, 3.0)
 	var valve_timing := clampf(float(tuning.get("valve_timing", 0.0)), -10.0, 10.0)
@@ -123,8 +124,7 @@ func calculate_engine_setup(block_id: String, induction_id: String, material_id:
 	tune_reliability_mult *= 1.0 + fuel_map * 0.006
 	tune_reliability_mult = clampf(tune_reliability_mult, 0.62, 1.12)
 
-	var peak_power_hp := int(round(225.0 * rpm_factor * displacement_factor * power_mult * tune_power_mult))
-	var torque_nm := int(round(260.0 * displacement_factor * (1.0 + power_mult * 0.18) * (1.0 - lag * 0.08) * (1.0 + boost * 0.06 * boost_effect)))
+	var torque_nm := int(round(285.0 * displacement_factor * _block_torque_bias(setup_block_id) * (0.72 + power_mult * 0.34) * (1.0 - lag * 0.06) * (1.0 + boost * 0.06 * boost_effect) * tune_power_mult))
 	var heat_load := float(block.get("heat_factor", 1.0)) * float(induction.get("heat_mult", 1.0)) * tune_heat_mult / float(material.get("max_heat_mult", 1.0))
 	var reliability_score := 100.0 * float(block.get("reliability_factor", 1.0)) * float(induction.get("reliability_mult", 1.0)) * float(material.get("durability_mult", 1.0)) * tune_reliability_mult
 	var heat_penalty := maxf(0.0, heat_load - 1.0) * 22.0
@@ -133,7 +133,8 @@ func calculate_engine_setup(block_id: String, induction_id: String, material_id:
 	var response_score := clampf((1.0 - lag) * 100.0 * (155.0 / maxf(mass_kg, 1.0)) * (1.0 - maxf(0.0, valve_timing) * 0.008 + maxf(0.0, -valve_timing) * 0.006), 20.0, 115.0)
 	var heat_score := clampf(heat_load * 100.0, 40.0, 160.0)
 	var push_margin := clampf(reliability_score - maxf(0.0, heat_score - 100.0) * 0.35, 0.0, 120.0)
-	var curves := _build_power_torque_curves(block, induction, rpm_min, rpm_max, torque_nm, peak_power_hp, tuning)
+	var curves := _build_power_torque_curves(block, induction, rpm_min, rpm_max, torque_nm, tuning)
+	var peak_power_hp := int(curves.get("max_power", 0))
 
 	var warning := "Stable baseline."
 	if push_margin < 45.0:
@@ -652,26 +653,26 @@ func _load_array(path: String, label: String) -> Array:
 
 	return parsed
 
-func _validate_records(records: Array, required_keys: Array, label: String) -> bool:
+func _validate_records(records: Array, required_keys: Array, label: String, source_path: String = "") -> bool:
 	var ok := true
 	for index in range(records.size()):
 		var record: Variant = records[index]
 		if typeof(record) != TYPE_DICTIONARY:
-			load_errors.append("%s %d must be a dictionary." % [label.capitalize(), index])
+			load_errors.append("%s must be a dictionary." % _record_location(label, index, source_path))
 			ok = false
 			continue
 
 		for key in required_keys:
 			if not record.has(key):
-				load_errors.append("%s %d is missing required key '%s'." % [label.capitalize(), index, key])
+				load_errors.append("%s is missing required key '%s'." % [_record_location(label, index, source_path), key])
 				ok = false
 
 	return ok
 
 func _validate_engine_blocks() -> bool:
 	var fields := ["id", "name", "rpm_range", "torque_profile", "mass", "heat_factor", "reliability_factor"]
-	var ok := _validate_records(blocks, fields, "engine block")
-	ok = _validate_unique_ids(blocks, "engine block") and ok
+	var ok := _validate_records(blocks, fields, "engine block", ENGINE_BLOCKS_PATH)
+	ok = _validate_unique_ids(blocks, "engine block", ENGINE_BLOCKS_PATH) and ok
 
 	for index in range(blocks.size()):
 		var record: Variant = blocks[index]
@@ -679,7 +680,7 @@ func _validate_engine_blocks() -> bool:
 			continue
 
 		var block: Dictionary = record
-		var label := "Engine block %d" % index
+		var label := _record_location("engine block", index, ENGINE_BLOCKS_PATH)
 		ok = _validate_string_field(block, "id", label) and ok
 		ok = _validate_string_field(block, "name", label) and ok
 		ok = _validate_rpm_range(block, label) and ok
@@ -693,8 +694,8 @@ func _validate_engine_blocks() -> bool:
 
 func _validate_induction_systems() -> bool:
 	var fields := ["id", "name", "power_mult", "lag", "heat_mult", "reliability_mult"]
-	var ok := _validate_records(inductions, fields, "induction system")
-	ok = _validate_unique_ids(inductions, "induction system") and ok
+	var ok := _validate_records(inductions, fields, "induction system", INDUCTION_SYSTEMS_PATH)
+	ok = _validate_unique_ids(inductions, "induction system", INDUCTION_SYSTEMS_PATH) and ok
 
 	for index in range(inductions.size()):
 		var record: Variant = inductions[index]
@@ -702,7 +703,7 @@ func _validate_induction_systems() -> bool:
 			continue
 
 		var induction: Dictionary = record
-		var label := "Induction system %d" % index
+		var label := _record_location("induction system", index, INDUCTION_SYSTEMS_PATH)
 		ok = _validate_string_field(induction, "id", label) and ok
 		ok = _validate_string_field(induction, "name", label) and ok
 		ok = _validate_number_field(induction, "power_mult", label, 0.01) and ok
@@ -715,8 +716,8 @@ func _validate_induction_systems() -> bool:
 
 func _validate_materials() -> bool:
 	var fields := ["id", "name", "mass_mult", "max_heat_mult", "durability_mult"]
-	var ok := _validate_records(materials, fields, "material")
-	ok = _validate_unique_ids(materials, "material") and ok
+	var ok := _validate_records(materials, fields, "material", MATERIALS_PATH)
+	ok = _validate_unique_ids(materials, "material", MATERIALS_PATH) and ok
 
 	for index in range(materials.size()):
 		var record: Variant = materials[index]
@@ -724,7 +725,7 @@ func _validate_materials() -> bool:
 			continue
 
 		var material: Dictionary = record
-		var label := "Material %d" % index
+		var label := _record_location("material", index, MATERIALS_PATH)
 		ok = _validate_string_field(material, "id", label) and ok
 		ok = _validate_string_field(material, "name", label) and ok
 		ok = _validate_number_field(material, "mass_mult", label, 0.01) and ok
@@ -742,7 +743,7 @@ func _contract_entry(label: String, count: int, fields: Array, ok: bool) -> Dict
 		"ok": ok
 	}
 
-func _validate_unique_ids(records: Array, label: String) -> bool:
+func _validate_unique_ids(records: Array, label: String, source_path: String = "") -> bool:
 	var ok := true
 	var seen := {}
 	for index in range(records.size()):
@@ -754,12 +755,16 @@ func _validate_unique_ids(records: Array, label: String) -> bool:
 		if id == "":
 			continue
 		if seen.has(id):
-			load_errors.append("%s %d has duplicate id '%s'." % [label.capitalize(), index, id])
+			load_errors.append("%s has duplicate id '%s'." % [_record_location(label, index, source_path), id])
 			ok = false
 			continue
 		seen[id] = true
 
 	return ok
+
+func _record_location(label: String, index: int, source_path: String) -> String:
+	var prefix := "%s " % source_path if source_path != "" else ""
+	return "%s%s %d" % [prefix, label, index]
 
 func _validate_string_field(record: Dictionary, key: String, label: String) -> bool:
 	if not record.has(key):
@@ -814,7 +819,7 @@ func _validate_rpm_range(record: Dictionary, label: String) -> bool:
 func _is_number(value: Variant) -> bool:
 	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
 
-func _build_power_torque_curves(block: Dictionary, induction: Dictionary, rpm_min: int, rpm_max: int, peak_torque: int, peak_power: int, tuning: Dictionary) -> Dictionary:
+func _build_power_torque_curves(block: Dictionary, induction: Dictionary, rpm_min: int, rpm_max: int, peak_torque: int, tuning: Dictionary) -> Dictionary:
 	var torque_points: Array = []
 	var power_points: Array = []
 	var samples := 18
@@ -822,6 +827,7 @@ func _build_power_torque_curves(block: Dictionary, induction: Dictionary, rpm_mi
 	var max_power := 1.0
 	var block_id := str(block.get("id", ""))
 	var lag := float(induction.get("lag", 0.0))
+	var induction_power_mult := float(induction.get("power_mult", 1.0))
 	var boost := clampf(float(tuning.get("boost", 0.0)), 0.0, 3.0)
 	var valve_timing := clampf(float(tuning.get("valve_timing", 0.0)), -10.0, 10.0)
 	var fuel_map := clampf(float(tuning.get("fuel_map", 0.0)), -10.0, 10.0)
@@ -831,10 +837,11 @@ func _build_power_torque_curves(block: Dictionary, induction: Dictionary, rpm_mi
 		var rpm := lerpf(float(rpm_min), float(rpm_max), t)
 		var base_shape := _torque_shape(block_id, t)
 		var spool := _spool_factor(lag, t)
+		var induction_gain := _induction_curve_gain(induction_power_mult, lag, spool, t)
 		var boost_gain := 1.0 + boost * 0.07 * spool
 		var valve_shift := 1.0 + valve_timing * (t - 0.45) * 0.018
 		var fuel_safety := 1.0 - absf(fuel_map) * 0.003
-		var torque := float(peak_torque) * base_shape * boost_gain * valve_shift * fuel_safety
+		var torque := float(peak_torque) * base_shape * induction_gain * boost_gain * valve_shift * fuel_safety
 		var power := torque * rpm / 7127.0
 
 		max_torque = maxf(max_torque, torque)
@@ -852,23 +859,51 @@ func _build_power_torque_curves(block: Dictionary, induction: Dictionary, rpm_mi
 		"torque": torque_points,
 		"power": power_points,
 		"max_torque": int(round(max_torque)),
-		"max_power": int(round(maxf(max_power, float(peak_power))))
+		"max_power": int(round(max_power))
 	}
+
+func _block_torque_bias(block_id: String) -> float:
+	match block_id:
+		"v8":
+			return 1.1
+		"v6":
+			return 1.0
+		"rotary":
+			return 0.98
+		"boxer_4":
+			return 0.94
+		"inline_4":
+			return 0.98
+		"v4":
+			return 0.9
+		_:
+			return 1.0
 
 func _torque_shape(block_id: String, t: float) -> float:
 	match block_id:
 		"v8":
-			return clampf(0.92 + sin(t * PI) * 0.18 - t * 0.08, 0.58, 1.08)
+			return clampf(1.0 + sin(t * PI) * 0.16 - t * 0.2 - maxf(0.0, t - 0.62) * 0.34, 0.56, 1.08)
 		"rotary":
-			return clampf(0.48 + t * 0.42 + sin(t * PI) * 0.18, 0.42, 1.04)
+			return clampf(0.42 + t * 0.72 + sin(t * PI) * 0.1, 0.38, 1.2)
 		"inline_4":
-			return clampf(0.56 + sin(t * PI) * 0.34 + t * 0.12, 0.46, 1.08)
+			return clampf(0.52 + sin(t * PI) * 0.3 + t * 0.24 - maxf(0.0, t - 0.82) * 0.35, 0.44, 1.14)
 		"boxer_4":
 			return clampf(0.78 + sin(t * PI) * 0.22 - maxf(0.0, t - 0.74) * 0.28, 0.55, 1.04)
 		"v4":
 			return clampf(0.68 + sin(t * PI) * 0.3 + t * 0.04, 0.52, 1.05)
 		_:
 			return clampf(0.72 + sin(t * PI) * 0.28, 0.52, 1.04)
+
+func _induction_curve_gain(power_mult: float, lag: float, spool: float, t: float) -> float:
+	var boost_extra := maxf(0.0, power_mult - 1.0)
+	if boost_extra <= 0.0:
+		return 1.0
+	if lag <= 0.05:
+		return 1.0 + boost_extra * (0.38 + t * 0.18)
+
+	var low_rpm_penalty := (1.0 - spool) * 0.28
+	var high_rpm_gain := spool * 0.58
+	return clampf(1.0 + boost_extra * (high_rpm_gain - low_rpm_penalty), 0.86, 1.28)
 
 func _spool_factor(lag: float, t: float) -> float:
 	if lag <= 0.03:

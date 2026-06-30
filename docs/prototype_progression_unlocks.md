@@ -24,7 +24,7 @@ Default unlocked parts:
 - Induction: `na`, `single_turbo`.
 - Material: `aluminum`.
 
-Locked parts still appear in Engine Builder selectors with a locked label, but cannot be selected until progression unlocks them.
+This prototype stores unlock metadata for later design work, but Phase 1 Engine Builder keeps every block, induction, and material selectable. Progression must not gate Builder options until the roadmap explicitly promotes it.
 
 ## Unlock Rules
 
@@ -38,7 +38,7 @@ Locked parts still appear in Engine Builder selectors with a locked label, but c
 
 ## UI Touchpoints
 
-- Engine Builder shows current progression, locked counts, and next unlock targets.
+- Race and debug surfaces can show current progression and next unlock targets.
 - Race Result shows new unlock messages immediately after a qualifying run.
 - Analysis repeats progression state next to rebuild suggestions.
 - Data Smoke Test shows the progression file path and current unlock summary.

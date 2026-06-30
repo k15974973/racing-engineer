@@ -20,6 +20,8 @@ const GARAGE_STARTING_CREDITS := 2500
 const GARAGE_REPAIR_COST_PER_DAMAGE := 42
 const GARAGE_BUDGET_REPAIR_CREDITS := 650
 const GARAGE_PART_KEYS := ["block", "induction", "material"]
+const COMPARISON_LIMIT := 3
+const COMPARISON_COLORS := ["#534AB7", "#0F6E56", "#B45309"]
 const PROGRESSION_STARTER_UNLOCKS := {
 	"blocks": ["v4", "v6", "inline_4"],
 	"inductions": ["na", "single_turbo"],
@@ -265,7 +267,6 @@ func _render_engine_builder(layout: VBoxContainer) -> void:
 	controls.add_child(_builder_choice_panel("Block", GameData.blocks, "block"))
 	controls.add_child(_builder_choice_panel("Induction", GameData.inductions, "induction"))
 	controls.add_child(_builder_choice_panel("Material", GameData.materials, "material"))
-	controls.add_child(_progression_panel())
 	controls.add_child(_garage_status_panel())
 	controls.add_child(_builder_tuning_panel())
 	controls.add_child(_setup_save_panel())
@@ -280,12 +281,12 @@ func _render_engine_builder(layout: VBoxContainer) -> void:
 	_refresh_builder_results()
 
 func _ensure_builder_selection() -> void:
-	var defaults := GameData.get_default_builder_selection()
+	var defaults: Dictionary = GameData.get_default_builder_selection()
 	for key in _builder_selection.keys():
 		var selected_id := str(_builder_selection[key])
 		var collection_name := _builder_collection_name(key)
-		if selected_id == "" or GameData.get_record_by_id(collection_name, selected_id).is_empty() or not _is_part_unlocked(key, selected_id):
-			_builder_selection[key] = _first_unlocked_part_id(key, str(defaults.get(key, "")))
+		if selected_id == "" or GameData.get_record_by_id(collection_name, selected_id).is_empty():
+			_builder_selection[key] = str(defaults.get(key, ""))
 
 func _builder_choice_panel(title: String, records: Array, key: String) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -305,9 +306,12 @@ func _builder_choice_panel(title: String, records: Array, key: String) -> PanelC
 
 	stack.add_child(_label(title, 16, Color.html("#111827")))
 
-	var option := OptionButton.new()
-	option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var selected_index := 0
+	var choices := GridContainer.new()
+	choices.columns = 2
+	choices.add_theme_constant_override("h_separation", 6)
+	choices.add_theme_constant_override("v_separation", 6)
+	stack.add_child(choices)
+
 	for index in range(records.size()):
 		var item: Variant = records[index]
 		if typeof(item) != TYPE_DICTIONARY:
@@ -315,28 +319,56 @@ func _builder_choice_panel(title: String, records: Array, key: String) -> PanelC
 
 		var record: Dictionary = item
 		var record_id := str(record.get("id", ""))
-		var unlocked := _is_part_unlocked(key, record_id)
-		var item_name := str(record.get("name", "Unnamed"))
-		if not unlocked:
-			item_name = "%s (Locked)" % item_name
-		option.add_item(item_name)
-		var item_index := option.get_item_count() - 1
-		option.set_item_metadata(item_index, record_id)
-		option.set_item_disabled(item_index, not unlocked)
-		if record_id == str(_builder_selection[key]):
-			selected_index = item_index
+		var selected := record_id == str(_builder_selection[key])
+		choices.add_child(_slot_choice_button(str(record.get("name", "Unnamed")), record_id, key, selected))
 
-	if option.get_item_count() > 0:
-		option.select(selected_index)
-	option.item_selected.connect(_on_builder_choice_selected.bind(key, option))
-	stack.add_child(option)
+	var selected_record: Dictionary = GameData.get_record_by_id(_builder_collection_name(key), str(_builder_selection[key]))
+	stack.add_child(_selected_slot_panel(key, selected_record))
 
-	var selected_record := GameData.get_record_by_id(_builder_collection_name(key), str(_builder_selection[key]))
-	stack.add_child(_body_text(_format_choice_detail(key, selected_record)))
-	var locked_count := _locked_part_count(key)
-	if locked_count > 0:
-		stack.add_child(_body_text("%d locked option(s) remain in progression." % locked_count))
+	return panel
 
+func _slot_choice_button(text: String, record_id: String, key: String, selected: bool) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.tooltip_text = "Selected" if selected else "Select %s" % text
+	button.pressed.connect(_on_builder_choice_selected.bind(record_id, key))
+
+	var normal_bg := Color.html("#111827") if selected else Color.html("#FFFFFF")
+	var normal_border := Color.html("#111827") if selected else Color.html("#D1D5DB")
+	var hover_bg := Color.html("#1F2937") if selected else Color.html("#EEF2FF")
+	var hover_border := Color.html("#1F2937") if selected else Color.html("#534AB7")
+	button.add_theme_stylebox_override("normal", _panel_style(normal_bg, normal_border))
+	button.add_theme_stylebox_override("hover", _panel_style(hover_bg, hover_border))
+	button.add_theme_stylebox_override("pressed", _panel_style(Color.html("#374151"), Color.html("#111827")))
+	button.add_theme_color_override("font_color", Color.html("#FFFFFF") if selected else Color.html("#111827"))
+	button.add_theme_color_override("font_hover_color", Color.html("#FFFFFF") if selected else Color.html("#111827"))
+	return button
+
+func _selected_slot_panel(key: String, record: Dictionary) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#EEF2FF"), Color.html("#534AB7")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 7)
+	margin.add_child(stack)
+
+	if record.is_empty():
+		stack.add_child(_status("Select Block, Induction, and Material to view the curve.", false))
+		return panel
+
+	stack.add_child(_label("Selected: %s" % record.get("name", "Unnamed"), 14, Color.html("#111827")))
+	stack.add_child(_body_text(_format_choice_detail(key, record)))
+	for metric in _selector_metrics(key, record):
+		stack.add_child(_selector_metric_bar(metric))
 	return panel
 
 func _builder_summary_panel() -> PanelContainer:
@@ -360,6 +392,9 @@ func _builder_summary_panel() -> PanelContainer:
 
 	if setup.has("error"):
 		stack.add_child(_status(str(setup["error"]), false))
+		if setup.has("errors"):
+			stack.add_child(_bullet_list(setup.get("errors", [])))
+		stack.add_child(_body_text("Select Block, Induction, and Material to view the curve."))
 		return panel
 
 	var title := "%s + %s + %s" % [setup["block"].get("name", "Block"), setup["induction"].get("name", "Induction"), setup["material"].get("name", "Material")]
@@ -430,7 +465,24 @@ func _test_bench_preview_panel() -> PanelContainer:
 
 	stack.add_child(_label("Test Bench", 16, Color.html("#111827")))
 	if setup.has("error"):
-		stack.add_child(_body_text("Waiting for valid setup data."))
+		var controls := HBoxContainer.new()
+		controls.add_theme_constant_override("separation", 8)
+		stack.add_child(controls)
+
+		var start_button := Button.new()
+		_bench_toggle_button = start_button
+		start_button.text = "Start"
+		start_button.disabled = true
+		start_button.tooltip_text = str(setup["error"])
+		controls.add_child(start_button)
+
+		var reset_button := Button.new()
+		reset_button.text = "Reset"
+		reset_button.disabled = true
+		reset_button.tooltip_text = str(setup["error"])
+		controls.add_child(reset_button)
+
+		stack.add_child(_status(str(setup["error"]), false))
 		return panel
 
 	var controls := HBoxContainer.new()
@@ -507,6 +559,11 @@ func _bench_bar(max_value: float) -> ProgressBar:
 	return bar
 
 func _toggle_test_bench() -> void:
+	var setup := _current_setup()
+	if setup.has("error"):
+		_bench_running = false
+		return
+
 	if _bench_elapsed >= TEST_BENCH_DURATION:
 		_bench_elapsed = 0.0
 
@@ -645,23 +702,123 @@ func _setup_comparison_panel() -> PanelContainer:
 	margin.add_child(stack)
 
 	stack.add_child(_label("Setup Comparison", 18, Color.html("#111827")))
-	if _saved_setups.is_empty():
-		stack.add_child(_body_text("No saved setups yet. Save the current build to compare engine versions side by side."))
+
+	var entries := _comparison_entries()
+	if entries.size() < 2:
+		stack.add_child(_body_text("Save at least one valid setup to overlay power curves. Comparison is limited to the current setup plus two saved configs."))
+		if _saved_setups.is_empty():
+			return panel
+		stack.add_child(_label("Saved Library", 15, Color.html("#111827")))
+		stack.add_child(_saved_setup_strip())
 		return panel
 
+	var legend := HBoxContainer.new()
+	legend.add_theme_constant_override("separation", 12)
+	stack.add_child(legend)
+	for entry in entries:
+		var item: Dictionary = entry
+		legend.add_child(_legend_item(str(item.get("label", "Setup")), item.get("color", Color.html("#534AB7")), "%s hp" % item.get("peak_power", "?")))
+
+	var chart := CurveChart.new()
+	chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chart.set_power_overlay(entries)
+	stack.add_child(chart)
+
+	stack.add_child(_comparison_diff_block(entries))
+	if _saved_setups.size() > COMPARISON_LIMIT - 1:
+		stack.add_child(_body_text("Showing current setup plus the first two saved setups. Keep overlays to three configs to avoid graph noise."))
+
+	stack.add_child(_label("Saved Library", 15, Color.html("#111827")))
+	stack.add_child(_saved_setup_strip())
+	return panel
+
+func _saved_setup_strip() -> ScrollContainer:
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 170)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stack.add_child(scroll)
-
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	scroll.add_child(row)
 
 	for index in range(_saved_setups.size()):
 		row.add_child(_saved_setup_card(index))
+	return scroll
 
-	return panel
+func _comparison_entries() -> Array:
+	var entries: Array = []
+	var current_setup := _current_base_setup()
+	if not current_setup.has("error"):
+		entries.append(_comparison_entry("Current", current_setup, 0))
+
+	for index in range(_saved_setups.size()):
+		if entries.size() >= COMPARISON_LIMIT:
+			break
+
+		var saved: Dictionary = _saved_setups[index]
+		var setup: Dictionary = saved.get("setup", {})
+		if setup.has("error") or setup.is_empty():
+			continue
+
+		entries.append(_comparison_entry(str(saved.get("name", "Setup")), setup, entries.size()))
+
+	return entries
+
+func _comparison_entry(label: String, setup: Dictionary, index: int) -> Dictionary:
+	var color_index := index % COMPARISON_COLORS.size()
+	return {
+		"label": label,
+		"setup": setup,
+		"color": Color.html(str(COMPARISON_COLORS[color_index])),
+		"peak_power": setup.get("peak_power_hp", "?")
+	}
+
+func _comparison_diff_block(entries: Array) -> VBoxContainer:
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 5)
+	stack.add_child(_label("Stat Diff vs Baseline", 15, Color.html("#111827")))
+
+	var baseline_entry: Dictionary = entries[0]
+	var baseline: Dictionary = baseline_entry.get("setup", {})
+	for entry_item in entries:
+		if typeof(entry_item) != TYPE_DICTIONARY:
+			continue
+
+		var entry: Dictionary = entry_item
+		var setup: Dictionary = entry.get("setup", {})
+		var text := "%s | Power %s | Torque %s | Peak RPM %s | Mass %s" % [
+			entry.get("label", "Setup"),
+			_value_with_delta(float(setup.get("peak_power_hp", 0.0)), float(baseline.get("peak_power_hp", 0.0)), " hp"),
+			_value_with_delta(float(setup.get("torque_nm", 0.0)), float(baseline.get("torque_nm", 0.0)), " Nm"),
+			_value_with_delta(float(_peak_power_rpm(setup)), float(_peak_power_rpm(baseline)), " rpm"),
+			_value_with_delta(float(setup.get("mass_kg", 0.0)), float(baseline.get("mass_kg", 0.0)), " kg")
+		]
+		stack.add_child(_body_text(text))
+
+	return stack
+
+func _value_with_delta(value: float, baseline: float, suffix: String) -> String:
+	var absolute := "%0.0f%s" % [value, suffix]
+	if absf(baseline) <= 0.001 or is_equal_approx(value, baseline):
+		return "%s (base)" % absolute
+
+	var delta := (value - baseline) / baseline * 100.0
+	return "%s (%+0.0f%%)" % [absolute, delta]
+
+func _peak_power_rpm(setup: Dictionary) -> int:
+	var curves: Dictionary = setup.get("curves", {})
+	var points: Array = curves.get("power", [])
+	var best_rpm := int(setup.get("rpm_max", 0))
+	var best_value := -INF
+	for item in points:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var point: Dictionary = item
+		var value := float(point.get("value", 0.0))
+		if value > best_value:
+			best_value = value
+			best_rpm = int(point.get("rpm", best_rpm))
+	return best_rpm
 
 func _saved_setup_card(index: int) -> PanelContainer:
 	var saved: Dictionary = _saved_setups[index]
@@ -792,7 +949,7 @@ func _default_progression() -> Dictionary:
 		"unlocked": PROGRESSION_STARTER_UNLOCKS.duplicate(true),
 		"completed_rules": [],
 		"clean_race_count": 0,
-		"last_message": "Starter garage unlocked."
+		"last_message": "Progression prototype loaded. Builder options stay open."
 	}
 
 func _normalized_progression(data: Dictionary) -> Dictionary:
@@ -822,43 +979,6 @@ func _string_array(raw: Variant) -> Array:
 	for item in raw:
 		result.append(str(item))
 	return result
-
-func _is_part_unlocked(key: String, part_id: String) -> bool:
-	if part_id == "":
-		return false
-
-	var collection_name := _builder_collection_name(key)
-	if collection_name == "":
-		collection_name = key
-
-	var unlocked: Dictionary = _progression.get("unlocked", {})
-	var ids: Array = unlocked.get(collection_name, [])
-	return ids.has(part_id)
-
-func _first_unlocked_part_id(key: String, fallback_id: String) -> String:
-	var collection_name := _builder_collection_name(key)
-	for item in GameData.get_collection(collection_name):
-		if typeof(item) != TYPE_DICTIONARY:
-			continue
-
-		var record: Dictionary = item
-		var part_id := str(record.get("id", ""))
-		if _is_part_unlocked(key, part_id):
-			return part_id
-
-	return fallback_id
-
-func _locked_part_count(key: String) -> int:
-	var collection_name := _builder_collection_name(key)
-	var count := 0
-	for item in GameData.get_collection(collection_name):
-		if typeof(item) != TYPE_DICTIONARY:
-			continue
-
-		var record: Dictionary = item
-		if not _is_part_unlocked(key, str(record.get("id", ""))):
-			count += 1
-	return count
 
 func _apply_progression_after_race(count_clean_race: bool) -> Array:
 	if _race_result.is_empty() or _race_result.has("error"):
@@ -1739,10 +1859,21 @@ func _current_setup() -> Dictionary:
 	return _apply_garage_penalty_to_setup(base_setup)
 
 func _current_base_setup() -> Dictionary:
+	var summary: Dictionary = GameData.get_summary()
+	var errors: Array = summary.get("errors", [])
+	if not errors.is_empty():
+		return {
+			"error": "Data contract validator failed. Fix the listed data file fields before running the builder.",
+			"errors": errors
+		}
+
 	for key in _builder_selection.keys():
 		var selected_id := str(_builder_selection[key])
-		if not _is_part_unlocked(key, selected_id):
-			return {"error": "%s is locked by progression." % selected_id}
+		var collection_name := _builder_collection_name(key)
+		if selected_id == "":
+			return {"error": "Select Block, Induction, and Material to view the curve."}
+		if GameData.get_record_by_id(collection_name, selected_id).is_empty():
+			return {"error": "%s selection is missing from %s." % [selected_id, collection_name]}
 
 	return GameData.calculate_engine_setup(str(_builder_selection["block"]), str(_builder_selection["induction"]), str(_builder_selection["material"]), _builder_tuning)
 
@@ -1769,12 +1900,7 @@ func _builder_collection_name(key: String) -> String:
 		_:
 			return ""
 
-func _on_builder_choice_selected(index: int, key: String, option: OptionButton) -> void:
-	var selected_id := str(option.get_item_metadata(index))
-	if not _is_part_unlocked(key, selected_id):
-		_show_view(VIEW_ENGINE_BUILDER)
-		return
-
+func _on_builder_choice_selected(selected_id: String, key: String) -> void:
 	_builder_selection[key] = selected_id
 	_reset_race_result()
 	_reset_test_bench()
@@ -1809,16 +1935,102 @@ func _format_choice_detail(key: String, record: Dictionary) -> String:
 
 	match key:
 		"block":
-			var rpm_range: Array = record.get("rpm_range", [])
-			var rpm := "%s-%s rpm" % [rpm_range[0], rpm_range[1]] if rpm_range.size() >= 2 else "RPM TBD"
-			var stats := "Mass: %s kg | Heat: %s | Reliability: %s" % [record.get("mass", "?"), record.get("heat_factor", "?"), record.get("reliability_factor", "?")]
-			return "%s\n%s\n%s" % [record.get("torque_profile", ""), stats, rpm]
+			return str(record.get("torque_profile", ""))
 		"induction":
-			return "Power x%s | Lag %s | Heat x%s | Reliability x%s" % [record.get("power_mult", "?"), record.get("lag", "?"), record.get("heat_mult", "?"), record.get("reliability_mult", "?")]
+			return "Output, response, and reliability trade off through the bars below."
 		"material":
-			return "Mass x%s | Max heat x%s | Durability x%s" % [record.get("mass_mult", "?"), record.get("max_heat_mult", "?"), record.get("durability_mult", "?")]
+			return "Material choice changes weight, heat ceiling, and durability margin."
 		_:
 			return str(record)
+
+func _selector_metrics(key: String, record: Dictionary) -> Array:
+	match key:
+		"block":
+			var rpm_range: Array = record.get("rpm_range", [0, 0])
+			var rpm_min := float(rpm_range[0]) if rpm_range.size() > 0 else 0.0
+			var rpm_max := float(rpm_range[1]) if rpm_range.size() > 1 else 0.0
+			var rpm_span := rpm_max - rpm_min
+			return [
+				{"label": "RPM range", "value": _norm_range(rpm_span, 5600.0, 7600.0), "note": _tier_text(_norm_range(rpm_span, 5600.0, 7600.0))},
+				{"label": "Shape", "value": _block_peakiness(record), "note": _shape_text(_block_peakiness(record))},
+				{"label": "Reliability", "value": _norm_range(float(record.get("reliability_factor", 1.0)), 0.88, 1.08), "note": _tier_text(_norm_range(float(record.get("reliability_factor", 1.0)), 0.88, 1.08))}
+			]
+		"induction":
+			var output := _norm_range(float(record.get("power_mult", 1.0)), 1.0, 1.46)
+			var response := 1.0 - _norm_range(float(record.get("lag", 0.0)), 0.0, 0.4)
+			var reliability := _norm_range(float(record.get("reliability_mult", 1.0)), 0.82, 1.08)
+			return [
+				{"label": "Output", "value": output, "note": _tier_text(output)},
+				{"label": "Response", "value": response, "note": _tier_text(response)},
+				{"label": "Reliability", "value": reliability, "note": _tier_text(reliability)}
+			]
+		"material":
+			var weight := 1.0 - _norm_range(float(record.get("mass_mult", 1.0)), 0.82, 1.0)
+			var heat := _norm_range(float(record.get("max_heat_mult", 1.0)), 1.0, 1.24)
+			var durability := _norm_range(float(record.get("durability_mult", 1.0)), 0.82, 1.0)
+			return [
+				{"label": "Weight saving", "value": weight, "note": _tier_text(weight)},
+				{"label": "Heat ceiling", "value": heat, "note": _tier_text(heat)},
+				{"label": "Durability", "value": durability, "note": _tier_text(durability)}
+			]
+		_:
+			return []
+
+func _selector_metric_bar(metric: Dictionary) -> VBoxContainer:
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 3)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	stack.add_child(row)
+
+	var label := _body_text(str(metric.get("label", "Metric")))
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	row.add_child(_label(str(metric.get("note", "")), 12, Color.html("#111827")))
+
+	var bar := ProgressBar.new()
+	bar.max_value = 1.0
+	bar.value = clampf(float(metric.get("value", 0.0)), 0.0, 1.0)
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 8)
+	_set_bar_fill(bar, _metric_bar_color(bar.value))
+	stack.add_child(bar)
+	return stack
+
+func _norm_range(value: float, low: float, high: float) -> float:
+	if is_equal_approx(low, high):
+		return 0.0
+	return clampf((value - low) / (high - low), 0.0, 1.0)
+
+func _block_peakiness(record: Dictionary) -> float:
+	var rpm_range: Array = record.get("rpm_range", [0, 0])
+	var rpm_min := float(rpm_range[0]) if rpm_range.size() > 0 else 0.0
+	var rpm_max := float(rpm_range[1]) if rpm_range.size() > 1 else 0.0
+	var high_rpm := _norm_range(rpm_max, 7600.0, 10500.0)
+	var late_start := _norm_range(rpm_min, 1400.0, 3200.0)
+	return clampf(high_rpm * 0.72 + late_start * 0.28, 0.0, 1.0)
+
+func _tier_text(value: float) -> String:
+	if value >= 0.68:
+		return "High"
+	if value >= 0.36:
+		return "Mid"
+	return "Low"
+
+func _shape_text(value: float) -> String:
+	if value >= 0.68:
+		return "Peaky"
+	if value >= 0.36:
+		return "Mixed"
+	return "Flat"
+
+func _metric_bar_color(value: float) -> Color:
+	if value >= 0.68:
+		return Color.html("#0F6E56")
+	if value >= 0.36:
+		return Color.html("#B45309")
+	return Color.html("#9F1239")
 
 func _legend_item(name: String, color: Color, value: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -2592,9 +2804,10 @@ func _progression_panel() -> PanelContainer:
 
 	var completed_rules: Array = _progression.get("completed_rules", [])
 	stack.add_child(_label("Progression", 16, Color.html("#111827")))
+	stack.add_child(_body_text("Future-phase prototype only. Engine Builder keeps all block, induction, and material options open."))
 	stack.add_child(_metric_row("Clean races", "%d/3" % mini(int(_progression.get("clean_race_count", 0)), 3)))
 	stack.add_child(_metric_row("Rules complete", "%d/%d" % [completed_rules.size(), PROGRESSION_RULES.size()]))
-	stack.add_child(_metric_row("Parts unlocked", "%d/%d" % [_unlocked_part_count(), _total_part_count()]))
+	stack.add_child(_metric_row("Prototype unlocks", "%d/%d" % [_unlocked_part_count(), _total_part_count()]))
 
 	var last_message := str(_progression.get("last_message", ""))
 	if last_message != "":

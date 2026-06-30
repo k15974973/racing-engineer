@@ -15,7 +15,7 @@ This is the first UI map for Phase 1. It keeps the player moving left to right f
 3. Material
    - Choose Standard Aluminum, Lightweight Titanium, or Extreme Ceramic.
    - Show mass, heat ceiling, and durability tradeoffs.
-   - Locked advanced choices remain visible until clean race progression unlocks them.
+   - All block, induction, and material choices remain available in Phase 1; progression gating is deferred.
 
 4. Parameter Tuning
    - Tune compression ratio, boost pressure, valve timing, fuel map, and ignition timing.

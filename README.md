@@ -15,7 +15,7 @@ The project currently includes Phase 0, the canonical Phase 1 Engine Builder sli
 - Race Sim prototype with track selection, projected lap time, sector fit, and interactive tactical windows.
 - Analysis screen with scorecard, findings, tactical review, and rebuild suggestions from the latest race.
 - Persistent race history with saved race loading, deletion, and best-run comparison in Analysis.
-- Persistent progression layer with starter parts, locked advanced parts, clean-race unlock rules, and debug visibility.
+- Persistent progression prototype with clean-race unlock metadata and debug visibility; Phase 1 Builder options stay open.
 - Persistent garage condition and economy layer with race payouts, repair costs, budget service, and performance penalties while damaged.
 - Hybrid slot-condition prototype for block, induction, and material using approved reliability/durability fields.
 - Service recommendations and lightweight service events when slot wear crosses key thresholds.
@@ -31,6 +31,7 @@ From the project root, run:
 ```powershell
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --scene 'res://scenes/Main.tscn' --quit-after 3
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/data_contract_smoke.gd'
+& 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/curve_differentiation_smoke.gd'
 ```
 
 ## Source Of Truth

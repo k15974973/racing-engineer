@@ -1,14 +1,38 @@
 extends Control
 
-var _power_points: Array = []
-var _torque_points: Array = []
+var _series: Array = []
+var _rpm_min := 0.0
+var _rpm_max := 1.0
+var _max_value := 1.0
 
 func _init() -> void:
 	custom_minimum_size = Vector2(0, 180)
 
 func set_curve_data(curves: Dictionary) -> void:
-	_power_points = curves.get("power", [])
-	_torque_points = curves.get("torque", [])
+	_series = [
+		{"label": "Torque", "points": curves.get("torque", []), "color": Color.html("#0F6E56"), "width": 2.0},
+		{"label": "Power", "points": curves.get("power", []), "color": Color.html("#534AB7"), "width": 2.0}
+	]
+	_recalculate_bounds()
+	queue_redraw()
+
+func set_power_overlay(entries: Array) -> void:
+	_series.clear()
+	for entry in entries:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+
+		var item: Dictionary = entry
+		var setup: Dictionary = item.get("setup", {})
+		var curves: Dictionary = setup.get("curves", {})
+		_series.append({
+			"label": item.get("label", "Setup"),
+			"points": curves.get("power", []),
+			"color": item.get("color", Color.html("#534AB7")),
+			"width": 2.4
+		})
+
+	_recalculate_bounds()
 	queue_redraw()
 
 func _notification(what: int) -> void:
@@ -32,21 +56,55 @@ func _draw() -> void:
 		var y := plot.position.y + plot.size.y * float(index) / 4.0
 		draw_line(Vector2(plot.position.x, y), Vector2(plot.position.x + plot.size.x, y), Color.html("#F3F4F6"), 1.0)
 
-	_draw_series(plot, _torque_points, Color.html("#0F6E56"))
-	_draw_series(plot, _power_points, Color.html("#534AB7"))
+	for item in _series:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
 
-func _draw_series(plot: Rect2, points: Array, color: Color) -> void:
+		var series: Dictionary = item
+		_draw_series(plot, series.get("points", []), series.get("color", Color.html("#534AB7")), float(series.get("width", 2.0)))
+
+func _draw_series(plot: Rect2, points: Array, color: Color, width: float) -> void:
 	if points.size() < 2:
 		return
 
-	var previous := _point_to_chart(plot, points[0], 0, points.size())
+	var previous := _point_to_chart(plot, points[0])
 	for index in range(1, points.size()):
-		var current := _point_to_chart(plot, points[index], index, points.size())
-		draw_line(previous, current, color, 2.0, true)
+		var current := _point_to_chart(plot, points[index])
+		draw_line(previous, current, color, width, true)
 		previous = current
 
-func _point_to_chart(plot: Rect2, point: Dictionary, index: int, count: int) -> Vector2:
-	var x := plot.position.x + plot.size.x * float(index) / maxf(float(count - 1), 1.0)
-	var norm := clampf(float(point.get("norm", 0.0)), 0.0, 1.0)
-	var y := plot.position.y + plot.size.y * (1.0 - norm)
+func _point_to_chart(plot: Rect2, point: Dictionary) -> Vector2:
+	var rpm_span := maxf(_rpm_max - _rpm_min, 1.0)
+	var rpm_t := clampf((float(point.get("rpm", _rpm_min)) - _rpm_min) / rpm_span, 0.0, 1.0)
+	var x := plot.position.x + plot.size.x * rpm_t
+	var value_t := clampf(float(point.get("value", 0.0)) / maxf(_max_value, 1.0), 0.0, 1.0)
+	var y := plot.position.y + plot.size.y * (1.0 - value_t)
 	return Vector2(x, y)
+
+func _recalculate_bounds() -> void:
+	_rpm_min = INF
+	_rpm_max = -INF
+	_max_value = 1.0
+
+	for item in _series:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var series: Dictionary = item
+		var points: Array = series.get("points", [])
+		for point_item in points:
+			if typeof(point_item) != TYPE_DICTIONARY:
+				continue
+
+			var point: Dictionary = point_item
+			var rpm := float(point.get("rpm", 0.0))
+			var value := float(point.get("value", 0.0))
+			_rpm_min = minf(_rpm_min, rpm)
+			_rpm_max = maxf(_rpm_max, rpm)
+			_max_value = maxf(_max_value, value)
+
+	if _rpm_min == INF or _rpm_max == -INF:
+		_rpm_min = 0.0
+		_rpm_max = 1.0
+
+	_max_value *= 1.08
