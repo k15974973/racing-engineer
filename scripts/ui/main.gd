@@ -11,6 +11,78 @@ const SAVED_SETUPS_PATH := "user://saved_setups.json"
 const SAVED_SETUPS_VERSION := 1
 const RACE_HISTORY_PATH := "user://race_history.json"
 const RACE_HISTORY_VERSION := 1
+const PROGRESSION_PATH := "user://progression.json"
+const PROGRESSION_VERSION := 1
+const PROGRESSION_STARTER_UNLOCKS := {
+	"blocks": ["v4", "v6", "inline_4"],
+	"inductions": ["na", "single_turbo"],
+	"materials": ["aluminum"]
+}
+const PROGRESSION_RULES := [
+	{
+		"id": "power_ring_clean",
+		"title": "Power Ring Clean Finish",
+		"description": "Fit 74+, heat 125 or lower, reliability 55+ on Power Ring.",
+		"track_id": "power_ring",
+		"fit_min": 74.0,
+		"heat_max": 125.0,
+		"reliability_min": 55.0,
+		"unlocks": {"materials": ["titanium"]}
+	},
+	{
+		"id": "technical_loop_clean",
+		"title": "Technical Loop Clean Finish",
+		"description": "Fit 74+, heat 125 or lower, reliability 55+ on Technical Loop.",
+		"track_id": "technical_loop",
+		"fit_min": 74.0,
+		"heat_max": 125.0,
+		"reliability_min": 55.0,
+		"unlocks": {"blocks": ["boxer_4"]}
+	},
+	{
+		"id": "b_class_fit",
+		"title": "B-Class Track Fit",
+		"description": "Fit 86+, heat 126 or lower, reliability 55+ on any track.",
+		"fit_min": 86.0,
+		"heat_max": 126.0,
+		"reliability_min": 55.0,
+		"unlocks": {"inductions": ["twin_turbo"]}
+	},
+	{
+		"id": "cool_fast_package",
+		"title": "Cool Fast Package",
+		"description": "Beat baseline lap time while keeping heat 105 or lower and reliability 70+.",
+		"lap_delta_max": 0.0,
+		"heat_max": 105.0,
+		"reliability_min": 70.0,
+		"unlocks": {"inductions": ["supercharger"]}
+	},
+	{
+		"id": "heavy_power_brief",
+		"title": "Heavy Power Brief",
+		"description": "Reach 390 hp with fit 80+ and reliability 50+.",
+		"power_min": 390.0,
+		"fit_min": 80.0,
+		"reliability_min": 50.0,
+		"unlocks": {"blocks": ["v8"]}
+	},
+	{
+		"id": "thermal_mastery",
+		"title": "Thermal Mastery",
+		"description": "Fit 82+, heat 95 or lower, reliability 75+.",
+		"fit_min": 82.0,
+		"heat_max": 95.0,
+		"reliability_min": 75.0,
+		"unlocks": {"materials": ["ceramic"]}
+	},
+	{
+		"id": "experimental_license",
+		"title": "Experimental License",
+		"description": "Save three clean races to unlock the risky final parts.",
+		"clean_races": 3,
+		"unlocks": {"blocks": ["rotary"], "inductions": ["compound"]}
+	}
+]
 
 var _content: PanelContainer
 var _nav_buttons: Dictionary = {}
@@ -52,8 +124,11 @@ var _race_result: Dictionary = {}
 var _race_decisions: Dictionary = {}
 var _race_history_counter := 1
 var _race_history: Array = []
+var _progression: Dictionary = {}
+var _last_unlocks: Array = []
 
 func _ready() -> void:
+	_load_progression()
 	_load_saved_setups()
 	_load_race_history()
 	_build_shell()
@@ -178,6 +253,7 @@ func _render_engine_builder(layout: VBoxContainer) -> void:
 	controls.add_child(_builder_choice_panel("Block", GameData.blocks, "block"))
 	controls.add_child(_builder_choice_panel("Induction", GameData.inductions, "induction"))
 	controls.add_child(_builder_choice_panel("Material", GameData.materials, "material"))
+	controls.add_child(_progression_panel())
 	controls.add_child(_builder_tuning_panel())
 	controls.add_child(_setup_save_panel())
 
@@ -195,8 +271,8 @@ func _ensure_builder_selection() -> void:
 	for key in _builder_selection.keys():
 		var selected_id := str(_builder_selection[key])
 		var collection_name := _builder_collection_name(key)
-		if selected_id == "" or GameData.get_record_by_id(collection_name, selected_id).is_empty():
-			_builder_selection[key] = defaults.get(key, "")
+		if selected_id == "" or GameData.get_record_by_id(collection_name, selected_id).is_empty() or not _is_part_unlocked(key, selected_id):
+			_builder_selection[key] = _first_unlocked_part_id(key, str(defaults.get(key, "")))
 
 func _builder_choice_panel(title: String, records: Array, key: String) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -226,10 +302,16 @@ func _builder_choice_panel(title: String, records: Array, key: String) -> PanelC
 
 		var record: Dictionary = item
 		var record_id := str(record.get("id", ""))
-		option.add_item(str(record.get("name", "Unnamed")))
-		option.set_item_metadata(option.get_item_count() - 1, record_id)
+		var unlocked := _is_part_unlocked(key, record_id)
+		var item_name := str(record.get("name", "Unnamed"))
+		if not unlocked:
+			item_name = "%s (Locked)" % item_name
+		option.add_item(item_name)
+		var item_index := option.get_item_count() - 1
+		option.set_item_metadata(item_index, record_id)
+		option.set_item_disabled(item_index, not unlocked)
 		if record_id == str(_builder_selection[key]):
-			selected_index = option.get_item_count() - 1
+			selected_index = item_index
 
 	if option.get_item_count() > 0:
 		option.select(selected_index)
@@ -238,6 +320,9 @@ func _builder_choice_panel(title: String, records: Array, key: String) -> PanelC
 
 	var selected_record := GameData.get_record_by_id(_builder_collection_name(key), str(_builder_selection[key]))
 	stack.add_child(_body_text(_format_choice_detail(key, selected_record)))
+	var locked_count := _locked_part_count(key)
+	if locked_count > 0:
+		stack.add_child(_body_text("%d locked option(s) remain in progression." % locked_count))
 
 	return panel
 
@@ -660,6 +745,207 @@ func _clear_saved_setups() -> void:
 func _on_setup_name_changed(text: String) -> void:
 	_pending_setup_name = text
 
+func _load_progression() -> void:
+	_progression = _default_progression()
+	if not FileAccess.file_exists(PROGRESSION_PATH):
+		_write_progression()
+		return
+
+	var text := FileAccess.get_file_as_string(PROGRESSION_PATH)
+	var parsed: Variant = JSON.parse_string(text)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		_write_progression()
+		return
+
+	var data: Dictionary = parsed
+	if int(data.get("version", 0)) != PROGRESSION_VERSION:
+		_write_progression()
+		return
+
+	_progression = _normalized_progression(data)
+	_write_progression()
+
+func _write_progression() -> void:
+	var file := FileAccess.open(PROGRESSION_PATH, FileAccess.WRITE)
+	if file == null:
+		push_warning("Could not write progression to %s" % PROGRESSION_PATH)
+		return
+
+	file.store_string(JSON.stringify(_progression, "\t"))
+
+func _default_progression() -> Dictionary:
+	return {
+		"version": PROGRESSION_VERSION,
+		"unlocked": PROGRESSION_STARTER_UNLOCKS.duplicate(true),
+		"completed_rules": [],
+		"clean_race_count": 0,
+		"last_message": "Starter garage unlocked."
+	}
+
+func _normalized_progression(data: Dictionary) -> Dictionary:
+	var normalized := _default_progression()
+	var raw_unlocked: Dictionary = data.get("unlocked", {})
+	var unlocked: Dictionary = normalized["unlocked"]
+	for collection_name in unlocked.keys():
+		var ids: Array = unlocked[collection_name]
+		var raw_ids: Variant = raw_unlocked.get(collection_name, [])
+		if typeof(raw_ids) == TYPE_ARRAY:
+			for raw_id in raw_ids:
+				var part_id := str(raw_id)
+				if not ids.has(part_id):
+					ids.append(part_id)
+		unlocked[collection_name] = ids
+
+	normalized["completed_rules"] = _string_array(data.get("completed_rules", []))
+	normalized["clean_race_count"] = max(0, int(data.get("clean_race_count", 0)))
+	normalized["last_message"] = str(data.get("last_message", normalized["last_message"]))
+	return normalized
+
+func _string_array(raw: Variant) -> Array:
+	var result: Array = []
+	if typeof(raw) != TYPE_ARRAY:
+		return result
+
+	for item in raw:
+		result.append(str(item))
+	return result
+
+func _is_part_unlocked(key: String, part_id: String) -> bool:
+	if part_id == "":
+		return false
+
+	var collection_name := _builder_collection_name(key)
+	if collection_name == "":
+		collection_name = key
+
+	var unlocked: Dictionary = _progression.get("unlocked", {})
+	var ids: Array = unlocked.get(collection_name, [])
+	return ids.has(part_id)
+
+func _first_unlocked_part_id(key: String, fallback_id: String) -> String:
+	var collection_name := _builder_collection_name(key)
+	for item in GameData.get_collection(collection_name):
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = item
+		var part_id := str(record.get("id", ""))
+		if _is_part_unlocked(key, part_id):
+			return part_id
+
+	return fallback_id
+
+func _locked_part_count(key: String) -> int:
+	var collection_name := _builder_collection_name(key)
+	var count := 0
+	for item in GameData.get_collection(collection_name):
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = item
+		if not _is_part_unlocked(key, str(record.get("id", ""))):
+			count += 1
+	return count
+
+func _apply_progression_after_race(count_clean_race: bool) -> Array:
+	if _race_result.is_empty() or _race_result.has("error"):
+		_last_unlocks.clear()
+		return []
+
+	var changed := false
+	var messages: Array = []
+	if count_clean_race and _is_clean_race_result(_race_result):
+		_progression["clean_race_count"] = int(_progression.get("clean_race_count", 0)) + 1
+		changed = true
+		messages.append("Clean race saved %d/3." % int(_progression.get("clean_race_count", 0)))
+
+	var completed: Array = _progression.get("completed_rules", [])
+	for item in PROGRESSION_RULES:
+		var rule: Dictionary = item
+		var rule_id := str(rule.get("id", ""))
+		if rule_id == "" or completed.has(rule_id):
+			continue
+
+		if not _progression_rule_met(rule, _race_result):
+			continue
+
+		var unlocked_parts := _unlock_parts(rule.get("unlocks", {}))
+		completed.append(rule_id)
+		changed = true
+		if unlocked_parts.is_empty():
+			messages.append("%s complete." % rule.get("title", "Progression"))
+		else:
+			messages.append("%s unlocked %s." % [rule.get("title", "Progression"), _join_strings(unlocked_parts, ", ")])
+
+	_progression["completed_rules"] = completed
+	_last_unlocks = messages
+	if not messages.is_empty():
+		_progression["last_message"] = _join_strings(messages, " ")
+
+	if changed:
+		_write_progression()
+
+	return messages
+
+func _progression_rule_met(rule: Dictionary, race_result: Dictionary) -> bool:
+	var track: Dictionary = race_result.get("track", {})
+	var setup: Dictionary = race_result.get("setup", {})
+	if rule.has("track_id") and str(track.get("id", "")) != str(rule.get("track_id", "")):
+		return false
+	if rule.has("fit_min") and float(race_result.get("fit_score", 0.0)) < float(rule.get("fit_min", 0.0)):
+		return false
+	if rule.has("heat_max") and float(race_result.get("effective_heat", 999.0)) > float(rule.get("heat_max", 999.0)):
+		return false
+	if rule.has("reliability_min") and float(race_result.get("effective_reliability", 0.0)) < float(rule.get("reliability_min", 0.0)):
+		return false
+	if rule.has("lap_delta_max") and float(race_result.get("delta_vs_base", 999.0)) > float(rule.get("lap_delta_max", 999.0)):
+		return false
+	if rule.has("power_min") and float(setup.get("peak_power_hp", 0.0)) < float(rule.get("power_min", 0.0)):
+		return false
+	if rule.has("clean_races") and int(_progression.get("clean_race_count", 0)) < int(rule.get("clean_races", 0)):
+		return false
+	return true
+
+func _is_clean_race_result(race_result: Dictionary) -> bool:
+	return float(race_result.get("fit_score", 0.0)) >= 74.0 and float(race_result.get("effective_heat", 999.0)) <= 125.0 and float(race_result.get("effective_reliability", 0.0)) >= 55.0
+
+func _unlock_parts(unlocks: Dictionary) -> Array:
+	var unlocked_parts: Array = []
+	var unlocked: Dictionary = _progression.get("unlocked", {})
+	for collection_name in unlocks.keys():
+		var ids: Array = unlocked.get(collection_name, [])
+		var raw_part_ids: Variant = unlocks.get(collection_name, [])
+		if typeof(raw_part_ids) != TYPE_ARRAY:
+			continue
+
+		for raw_part_id in raw_part_ids:
+			var part_id := str(raw_part_id)
+			if ids.has(part_id):
+				continue
+			if GameData.get_record_by_id(collection_name, part_id).is_empty():
+				continue
+
+			ids.append(part_id)
+			unlocked_parts.append(_part_display_name(collection_name, part_id))
+		unlocked[collection_name] = ids
+
+	_progression["unlocked"] = unlocked
+	return unlocked_parts
+
+func _part_display_name(collection_name: String, part_id: String) -> String:
+	var record := GameData.get_record_by_id(collection_name, part_id)
+	if record.is_empty():
+		return part_id
+	return str(record.get("name", part_id))
+
+func _join_strings(items: Array, delimiter: String) -> String:
+	var text := ""
+	for index in range(items.size()):
+		if index > 0:
+			text += delimiter
+		text += str(items[index])
+	return text
+
 func _load_saved_setups() -> void:
 	_saved_setups.clear()
 	if not FileAccess.file_exists(SAVED_SETUPS_PATH):
@@ -753,6 +1039,7 @@ func _save_current_race() -> void:
 		"decisions": _race_decisions.duplicate(true),
 		"result": _race_result.duplicate(true)
 	})
+	_apply_progression_after_race(true)
 	_write_race_history()
 	_show_view(VIEW_RACE_SIM)
 
@@ -890,6 +1177,11 @@ func _tuning_slider(label_text: String, key: String, min_value: float, max_value
 	return stack
 
 func _current_setup() -> Dictionary:
+	for key in _builder_selection.keys():
+		var selected_id := str(_builder_selection[key])
+		if not _is_part_unlocked(key, selected_id):
+			return {"error": "%s is locked by progression." % selected_id}
+
 	return GameData.calculate_engine_setup(str(_builder_selection["block"]), str(_builder_selection["induction"]), str(_builder_selection["material"]), _builder_tuning)
 
 func _refresh_builder_results() -> void:
@@ -916,7 +1208,12 @@ func _builder_collection_name(key: String) -> String:
 			return ""
 
 func _on_builder_choice_selected(index: int, key: String, option: OptionButton) -> void:
-	_builder_selection[key] = str(option.get_item_metadata(index))
+	var selected_id := str(option.get_item_metadata(index))
+	if not _is_part_unlocked(key, selected_id):
+		_show_view(VIEW_ENGINE_BUILDER)
+		return
+
+	_builder_selection[key] = selected_id
 	_reset_race_result()
 	_reset_test_bench()
 	_show_view(VIEW_ENGINE_BUILDER)
@@ -1145,6 +1442,8 @@ func _race_result_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Final reliability", "%s / 120" % _race_result["effective_reliability"]))
 	stack.add_child(_meter_row("Track fit", float(_race_result["fit_score"]), 130.0, true))
 	stack.add_child(_status(str(_race_result["summary"]), float(_race_result["fit_score"]) >= 70.0))
+	if not _last_unlocks.is_empty():
+		stack.add_child(_status("Progression: %s" % _join_strings(_last_unlocks, " | "), true))
 
 	stack.add_child(_label("Sector Fit", 16, Color.html("#111827")))
 	for sector in _race_result["sectors"]:
@@ -1337,6 +1636,7 @@ func _run_race_sim() -> void:
 	_ensure_builder_selection()
 	_ensure_race_track()
 	_race_result = GameData.calculate_race_result(_current_setup(), _race_track_id, _race_decisions)
+	_apply_progression_after_race(false)
 	_show_view(VIEW_RACE_SIM)
 
 func _on_race_window_choice(window_type: String, choice_id: String) -> void:
@@ -1378,6 +1678,7 @@ func _render_analysis(layout: VBoxContainer) -> void:
 	left.add_child(_analysis_scorecard_panel(analysis))
 	left.add_child(_analysis_findings_panel(analysis))
 	right.add_child(_analysis_suggestions_panel(analysis))
+	right.add_child(_progression_panel())
 	right.add_child(_analysis_history_comparison_panel(analysis))
 	right.add_child(_analysis_decisions_panel(_race_result))
 
@@ -1554,6 +1855,83 @@ func _analysis_decisions_panel(race_result: Dictionary) -> PanelContainer:
 
 	return panel
 
+func _progression_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+
+	var completed_rules: Array = _progression.get("completed_rules", [])
+	stack.add_child(_label("Progression", 16, Color.html("#111827")))
+	stack.add_child(_metric_row("Clean races", "%d/3" % mini(int(_progression.get("clean_race_count", 0)), 3)))
+	stack.add_child(_metric_row("Rules complete", "%d/%d" % [completed_rules.size(), PROGRESSION_RULES.size()]))
+	stack.add_child(_metric_row("Parts unlocked", "%d/%d" % [_unlocked_part_count(), _total_part_count()]))
+
+	var last_message := str(_progression.get("last_message", ""))
+	if last_message != "":
+		stack.add_child(_status(last_message, true))
+
+	var next_rules := _next_progression_rules(3)
+	if not next_rules.is_empty():
+		stack.add_child(_label("Next Unlocks", 14, Color.html("#111827")))
+		for rule in next_rules:
+			var rule_text := "%s\n%s\nUnlocks: %s" % [rule.get("title", "Unlock"), rule.get("description", ""), _rule_unlock_names(rule)]
+			stack.add_child(_body_text(rule_text))
+
+	return panel
+
+func _next_progression_rules(limit: int) -> Array:
+	var completed_rules: Array = _progression.get("completed_rules", [])
+	var next_rules: Array = []
+	for item in PROGRESSION_RULES:
+		var rule: Dictionary = item
+		if completed_rules.has(str(rule.get("id", ""))):
+			continue
+
+		next_rules.append(rule)
+		if next_rules.size() >= limit:
+			break
+
+	return next_rules
+
+func _unlocked_part_count() -> int:
+	var unlocked: Dictionary = _progression.get("unlocked", {})
+	var count := 0
+	for collection_name in ["blocks", "inductions", "materials"]:
+		var ids: Array = unlocked.get(collection_name, [])
+		for part_id in ids:
+			if not GameData.get_record_by_id(collection_name, str(part_id)).is_empty():
+				count += 1
+	return count
+
+func _total_part_count() -> int:
+	return GameData.blocks.size() + GameData.inductions.size() + GameData.materials.size()
+
+func _rule_unlock_names(rule: Dictionary) -> String:
+	var names: Array = []
+	var unlocks: Dictionary = rule.get("unlocks", {})
+	for collection_name in unlocks.keys():
+		var ids: Variant = unlocks.get(collection_name, [])
+		if typeof(ids) != TYPE_ARRAY:
+			continue
+
+		for part_id in ids:
+			names.append(_part_display_name(collection_name, str(part_id)))
+
+	if names.is_empty():
+		return "Progress marker"
+	return _join_strings(names, ", ")
+
 func _render_roadmap(layout: VBoxContainer) -> void:
 	layout.add_child(_section_title("Roadmap"))
 	layout.add_child(_body_text("Six near-term phases are in scope. Real-time PvP stays deferred until the async online layer has real players and useful data."))
@@ -1572,6 +1950,8 @@ func _render_debug(layout: VBoxContainer) -> void:
 	layout.add_child(_body_text("Loaded blocks: %s | inductions: %s | materials: %s | tracks: %s | roadmap phases: %s" % [summary["blocks"], summary["inductions"], summary["materials"], summary["tracks"], summary["roadmap_phases"]]))
 	layout.add_child(_body_text("Saved setup file: %s" % ProjectSettings.globalize_path(SAVED_SETUPS_PATH)))
 	layout.add_child(_body_text("Race history file: %s" % ProjectSettings.globalize_path(RACE_HISTORY_PATH)))
+	layout.add_child(_body_text("Progression file: %s" % ProjectSettings.globalize_path(PROGRESSION_PATH)))
+	layout.add_child(_progression_panel())
 
 	if errors.is_empty():
 		layout.add_child(_status("PASS: GameData loaded every Part 1 data collection without validation errors.", true))

@@ -15,6 +15,7 @@ This is the first UI map for Phase 1. It keeps the player moving left to right f
 3. Material
    - Choose Standard Aluminum, Lightweight Titanium, or Extreme Ceramic.
    - Show mass, heat ceiling, and durability tradeoffs.
+   - Locked advanced choices remain visible until clean race progression unlocks them.
 
 4. Parameter Tuning
    - Tune compression ratio, boost pressure, valve timing, fuel map, and ignition timing.
@@ -31,6 +32,6 @@ This is the first UI map for Phase 1. It keeps the player moving left to right f
 - Right rail: live curves, warnings, and track-fit hints.
 - Bottom action row: save setup, compare setup, test bench, race.
 
-## Part 1 Placeholder Mapping
+## Current Part 1 Mapping
 
-The current Godot shell maps this flow into the Engine Builder placeholder screen and the Data Smoke Test screen. Phase 1 should replace the placeholder columns with interactive controls while keeping the data source in `GameData`.
+The current Godot shell maps this flow into interactive Engine Builder controls, a Race Sim screen, Analysis, Roadmap, and Data Smoke Test. Phase 1 should keep expanding these mechanics while keeping part data and progression state outside hardcoded UI values.

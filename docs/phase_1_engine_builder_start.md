@@ -13,6 +13,7 @@
 - Tactical windows are interactive and affect race time, heat, and reliability.
 - Analysis explains the latest race with a scorecard, findings, tactical review, and rebuild direction.
 - Race history persists to `user://race_history.json` and lets Analysis compare against the best saved run on the same track.
+- Progression persists to `user://progression.json`, gates advanced parts, and unlocks parts from clean race results.
 - Current projected stats:
   - Peak power
   - Torque
@@ -26,4 +27,4 @@
 
 ## Next Phase 1 Step
 
-Add a simple progression layer that unlocks parts after clean race results.
+Add a lightweight failure and repair layer so heat, reliability, and aggressive tactical choices produce visible consequences before economy or online systems arrive.
