@@ -10,6 +10,8 @@
 - Each race generates three to four tactical windows so the player has a real engineering sequence instead of a single isolated prompt.
 - Race results now include a lap-ordered `timeline` object that shows each tactical decision, cumulative time delta, projected heat, projected reliability, and risk label.
 - Race results now include a `save_preview` object that summarizes final heat, final reliability, decision deltas, and save risk before the player commits the race to history/garage effects.
+- Race Sim now shows the best saved run for the selected track and compares the current total time before the player opens Analysis.
+- Race Sim now uses a timeline stepper so the player can inspect each tactical decision in sequence.
 - `tests/race_sim_smoke.gd` verifies timing consistency, sector output, window count, timeline consistency, save preview consistency, decision-effect totals, aggressive/conservative tradeoffs, track-specific windows, and the invalid-track error path.
 
 ## Still Out Of Scope
@@ -21,4 +23,4 @@
 
 ## Next Phase 2 Step
 
-Improve the Race Sim screen around comparison and replay clarity: add saved-run overlay, show best run deltas on the Race Sim screen, and make tactical choices easier to compare without opening Analysis.
+Improve Race Sim replay clarity: add a compact full-run summary beside the stepper, expose per-track setup notes, and only add a third track after the two current tracks keep producing distinct tactical decisions.

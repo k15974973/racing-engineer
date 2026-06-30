@@ -18,7 +18,8 @@ Phase 2 is now active. The current slice turns the earlier Race Sim prototype in
 - Boost windows are tied to forced-induction setups, so naturally aspirated builds do not receive fake boost events.
 - Race results now include a lap-ordered `timeline` object.
 - Race results now include a `save_preview` object before committing a race to history or garage effects.
-- The Race Sim UI shows pre-save risk, race timeline cards, and decision totals.
+- The Race Sim UI shows pre-save risk, a timeline stepper, and decision totals.
+- The Race Sim UI shows the best saved run for the selected track and compares the current run against it before Analysis.
 - Analysis now reads the timeline when explaining tactical decisions.
 
 ## Data Objects
@@ -99,8 +100,7 @@ Heat penalty was tuned so a cool setup can gain time by pushing, while hot or fr
 
 ## Next Recommended Phase 2 Work
 
-- Add saved-run comparison directly on Race Sim.
-- Show best run delta before entering Analysis.
-- Add a simple replay/stepper over the timeline.
-- Add per-track tuning notes without expanding the data model.
-- Add one more track only after the two current tracks produce distinct tactical decisions.
+- Add a compact full-run summary beside the timeline stepper.
+- Add per-track setup notes without expanding the data model.
+- Add simple comparison filters for saved runs on the same track.
+- Add one more track only after the two current tracks keep producing distinct tactical decisions.

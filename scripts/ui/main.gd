@@ -139,6 +139,7 @@ var _last_unlocks: Array = []
 var _last_damage_report: Dictionary = {}
 var _last_reward_report: Dictionary = {}
 var _race_committed := false
+var _timeline_focus_index := 0
 
 func _ready() -> void:
 	_load_progression()
@@ -1729,6 +1730,7 @@ func _load_race_history_entry(index: int) -> void:
 	_last_damage_report = record.get("garage_damage", _damage_estimate_for_race(_race_result)).duplicate(true)
 	_last_reward_report = record.get("garage_reward", _race_reward_estimate(_race_result, _last_damage_report)).duplicate(true)
 	_race_committed = true
+	_timeline_focus_index = 0
 	_reset_test_bench()
 	_show_view(VIEW_RACE_SIM)
 
@@ -2149,6 +2151,12 @@ func _race_track_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Laps", str(track.get("laps", "?"))))
 	stack.add_child(_metric_row("Length", "%s km" % track.get("length_km", "?")))
 	stack.add_child(_metric_row("Base lap", "%ss" % track.get("base_lap_time", "?")))
+	var best_record := _best_race_history_record_for_track(_race_track_id)
+	if best_record.is_empty():
+		stack.add_child(_body_text("No saved run on this track yet."))
+	else:
+		var best_result: Dictionary = best_record.get("result", {})
+		stack.add_child(_metric_row("Best saved", "%s / %ss" % [best_record.get("name", "Race"), best_result.get("total_time", "?")]))
 
 	var run_button := Button.new()
 	run_button.text = "Run Race"
@@ -2225,6 +2233,7 @@ func _race_result_panel() -> PanelContainer:
 	stack.add_child(_status(str(_race_result["summary"]), float(_race_result["fit_score"]) >= 70.0))
 	if not _last_unlocks.is_empty():
 		stack.add_child(_status("Progression: %s" % _join_strings(_last_unlocks, " | "), true))
+	stack.add_child(_race_best_comparison_panel(_race_result))
 
 	var save_preview: Dictionary = _race_result.get("save_preview", {})
 	if not save_preview.is_empty():
@@ -2276,10 +2285,7 @@ func _race_result_panel() -> PanelContainer:
 	var timeline: Array = _race_result.get("timeline", [])
 	if not timeline.is_empty():
 		stack.add_child(_label("Race Timeline", 16, Color.html("#111827")))
-		for item in timeline:
-			if typeof(item) == TYPE_DICTIONARY:
-				var event: Dictionary = item
-				stack.add_child(_race_timeline_card(event))
+		stack.add_child(_race_timeline_stepper(timeline))
 
 	stack.add_child(_label("Tactical Windows", 16, Color.html("#111827")))
 	for window in _race_result["windows"]:
@@ -2299,6 +2305,83 @@ func _race_result_panel() -> PanelContainer:
 	save_button.text = "Save Copy" if _race_committed else "Save Race"
 	save_button.pressed.connect(_save_current_race)
 	actions.add_child(save_button)
+	return panel
+
+func _race_best_comparison_panel(race_result: Dictionary) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+	stack.add_child(_label("Best Saved Comparison", 16, Color.html("#111827")))
+
+	var track: Dictionary = race_result.get("track", {})
+	var best_record := _best_race_history_record_for_track(str(track.get("id", "")))
+	if best_record.is_empty():
+		stack.add_child(_body_text("Save a race on this track to compare the current run before opening Analysis."))
+		return panel
+
+	var best_result: Dictionary = best_record.get("result", {})
+	var current_total := float(race_result.get("total_time", 0.0))
+	var best_total := float(best_result.get("total_time", 0.0))
+	var delta := current_total - best_total
+	stack.add_child(_metric_row("Best run", "%s / %ss" % [best_record.get("name", "Race"), best_result.get("total_time", "?")]))
+	stack.add_child(_metric_row("Current run", "%ss" % race_result.get("total_time", "?")))
+	stack.add_child(_metric_row("Delta", "%+0.2fs" % delta))
+	stack.add_child(_status("Current run is faster than saved best." if delta < -0.01 else "Saved best is still faster or tied.", delta < -0.01))
+	return panel
+
+func _race_timeline_stepper(timeline: Array) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+
+	_clamp_timeline_focus()
+	var index := clampi(_timeline_focus_index, 0, timeline.size() - 1)
+	var event: Dictionary = timeline[index]
+
+	var controls := HBoxContainer.new()
+	controls.add_theme_constant_override("separation", 8)
+	stack.add_child(controls)
+
+	var previous := Button.new()
+	previous.text = "Previous"
+	previous.disabled = index <= 0
+	previous.pressed.connect(_move_timeline_focus.bind(-1))
+	controls.add_child(previous)
+
+	var label := _label("Step %d/%d" % [index + 1, timeline.size()], 14, Color.html("#111827"))
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	controls.add_child(label)
+
+	var next := Button.new()
+	next.text = "Next"
+	next.disabled = index >= timeline.size() - 1
+	next.pressed.connect(_move_timeline_focus.bind(1))
+	controls.add_child(next)
+
+	stack.add_child(_race_timeline_card(event))
 	return panel
 
 func _race_timeline_card(event: Dictionary) -> PanelContainer:
@@ -2493,12 +2576,14 @@ func _on_race_track_selected(index: int, option: OptionButton) -> void:
 	_last_damage_report.clear()
 	_last_reward_report.clear()
 	_race_committed = false
+	_timeline_focus_index = 0
 	_show_view(VIEW_RACE_SIM)
 
 func _run_race_sim() -> void:
 	_ensure_builder_selection()
 	_ensure_race_track()
 	_race_result = GameData.calculate_race_result(_current_setup(), _race_track_id, _race_decisions)
+	_clamp_timeline_focus()
 	_last_damage_report = _damage_estimate_for_race(_race_result)
 	_last_reward_report = _race_reward_estimate(_race_result, _last_damage_report)
 	_race_committed = false
@@ -2515,6 +2600,49 @@ func _reset_race_result() -> void:
 	_last_damage_report.clear()
 	_last_reward_report.clear()
 	_race_committed = false
+	_timeline_focus_index = 0
+
+func _move_timeline_focus(delta: int) -> void:
+	var timeline: Array = _race_result.get("timeline", [])
+	if timeline.is_empty():
+		_timeline_focus_index = 0
+		return
+
+	_timeline_focus_index = clampi(_timeline_focus_index + delta, 0, timeline.size() - 1)
+	_show_view(VIEW_RACE_SIM)
+
+func _clamp_timeline_focus() -> void:
+	var timeline: Array = _race_result.get("timeline", [])
+	if timeline.is_empty():
+		_timeline_focus_index = 0
+		return
+
+	_timeline_focus_index = clampi(_timeline_focus_index, 0, timeline.size() - 1)
+
+func _best_race_history_record_for_track(track_id: String) -> Dictionary:
+	if track_id == "":
+		return {}
+
+	var best_record: Dictionary = {}
+	var best_total := INF
+	for item in _race_history:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = item
+		var result: Dictionary = record.get("result", {})
+		var track: Dictionary = result.get("track", {})
+		var result_track_id := str(track.get("id", record.get("track_id", "")))
+		if result_track_id != track_id:
+			continue
+
+		var total := float(result.get("total_time", INF))
+		if total <= 0.0 or total >= best_total:
+			continue
+
+		best_total = total
+		best_record = record
+	return best_record
 
 func _render_analysis(layout: VBoxContainer) -> void:
 	layout.add_child(_section_title("Analysis"))
