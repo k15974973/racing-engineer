@@ -45,3 +45,7 @@ Straight Attack:
 ## Out Of Scope For Part 1
 
 This slice defines the behavior and creates placeholders. It does not implement live race simulation, particles, audio, backend validation, leaderboards, ghost races, or PvP.
+
+## Phase 2 Implementation Note
+
+Race Sim now implements deterministic tactical windows against track data. Each race should generate three to four decision windows from the approved groups: boost, heat, corner, and straight. The smoke test verifies that aggressive decisions trade reliability and heat for time, conservative decisions trade time for safety, and invalid track ids report the `res://data/tracks.json` data source instead of silently falling back.

@@ -12,7 +12,7 @@ func _run() -> void:
 		return
 
 	var report: Dictionary = game_data.get_contract_report()
-	for key in ["blocks", "inductions", "materials"]:
+	for key in ["blocks", "inductions", "materials", "tracks"]:
 		var contract: Dictionary = report.get(key, {})
 		if contract.is_empty():
 			_fail("Missing contract report for %s." % key)
@@ -38,7 +38,7 @@ func _run() -> void:
 		_fail("Engine health mismatch. Expected %s, got %s." % [expected_health, actual_health])
 		return
 
-	print("DATA_CONTRACT_SMOKE_OK blocks=%s inductions=%s materials=%s health=%s" % [summary.get("blocks", 0), summary.get("inductions", 0), summary.get("materials", 0), actual_health])
+	print("DATA_CONTRACT_SMOKE_OK blocks=%s inductions=%s materials=%s tracks=%s health=%s" % [summary.get("blocks", 0), summary.get("inductions", 0), summary.get("materials", 0), summary.get("tracks", 0), actual_health])
 	quit(0)
 
 func _fail(message: String) -> void:

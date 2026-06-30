@@ -6,6 +6,8 @@ const MATERIALS_PATH := "res://data/materials.json"
 const ROADMAP_PHASES_PATH := "res://data/roadmap_phases.json"
 const TRACKS_PATH := "res://data/tracks.json"
 const POWER_TORQUE_RPM_DIVISOR := 7121.0
+const RACE_HEAT_PENALTY_RATE := 0.00036
+const RACE_RELIABILITY_PENALTY_RATE := 0.0014
 
 var blocks: Array = []
 var inductions: Array = []
@@ -35,7 +37,7 @@ func validate_engine_data() -> bool:
 	ok = _validate_induction_systems() and ok
 	ok = _validate_materials() and ok
 	ok = _validate_records(roadmap_phases, ["id", "name", "duration", "goal", "deliverable"], "roadmap phase", ROADMAP_PHASES_PATH) and ok
-	ok = _validate_records(tracks, ["id", "name", "laps", "length_km", "base_lap_time", "straight_bias", "corner_bias", "endurance_bias", "heat_stress", "description"], "track", TRACKS_PATH) and ok
+	ok = _validate_tracks() and ok
 	return ok
 
 func get_summary() -> Dictionary:
@@ -230,9 +232,11 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 	if setup.has("error"):
 		return {"error": setup["error"]}
 
-	var track := _find_or_first(tracks, track_id)
+	var track := _track_for_race(track_id)
 	if track.is_empty():
-		return {"error": "Track data is incomplete."}
+		if tracks.is_empty():
+			return {"error": "Track data is incomplete: %s." % TRACKS_PATH}
+		return {"error": "Unknown track id '%s'. Check %s." % [track_id, TRACKS_PATH]}
 
 	var power := float(setup.get("peak_power_hp", 0.0))
 	var torque := float(setup.get("torque_nm", 0.0))
@@ -256,8 +260,8 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 	var endurance_score := clampf((effective_reliability / 105.0) * 55.0 + (push_margin / 105.0) * 35.0 + ((145.0 - effective_heat) / 80.0) * 10.0, 10.0, 130.0)
 	var fit_score := (power_score * straight_bias + technical_score * corner_bias + endurance_score * endurance_bias) / bias_total
 
-	var heat_penalty := maxf(0.0, effective_heat - 100.0) * float(track.get("heat_stress", 1.0)) * 0.0016
-	var reliability_penalty := maxf(0.0, 72.0 - effective_reliability) * endurance_bias * 0.0014
+	var heat_penalty := maxf(0.0, effective_heat - 100.0) * float(track.get("heat_stress", 1.0)) * RACE_HEAT_PENALTY_RATE
+	var reliability_penalty := maxf(0.0, 72.0 - effective_reliability) * endurance_bias * RACE_RELIABILITY_PENALTY_RATE
 	var lap_modifier := clampf(1.17 - fit_score * 0.0032 + heat_penalty + reliability_penalty, 0.78, 1.32)
 	var lap_time := float(track.get("base_lap_time", 90.0)) * lap_modifier
 	var laps := int(track.get("laps", 3))
@@ -467,48 +471,79 @@ func _build_race_windows(setup: Dictionary, track: Dictionary) -> Array:
 	var induction_id := str(induction.get("id", ""))
 	var block_id := str(block.get("id", ""))
 	var heat := float(setup.get("heat_score", 100.0))
+	var straight_bias := float(track.get("straight_bias", 0.0))
+	var corner_bias := float(track.get("corner_bias", 0.0))
+	var heat_stress := float(track.get("heat_stress", 1.0))
 
-	if induction_id in ["single_turbo", "twin_turbo", "compound"]:
-		windows.append({
-			"type": "Boost Spike",
-			"trigger": "Boosted setup under full load.",
-			"choice": "Push on straights; cut if heat is already above 115.",
-			"choices": _window_choices("Boost Spike")
-		})
+	if induction_id in ["single_turbo", "twin_turbo", "compound", "supercharger"]:
+		_append_race_window(windows, "Boost Spike", "Forced induction setup under full load.", "Push on straights; cut if heat is already above 115.")
 
-	if heat >= 108.0 or block_id in ["v8", "rotary"]:
-		windows.append({
-			"type": "High Temperature",
-			"trigger": "Thermal load is expected to stack during the run.",
-			"choice": "Cool if push margin is below 55; otherwise stabilize.",
-			"choices": _window_choices("High Temperature")
-		})
+	if heat >= 100.0 or heat_stress >= 0.95 or block_id in ["v8", "rotary"]:
+		_append_race_window(windows, "High Temperature", "Thermal load is expected to stack during the run.", "Cool if push margin is below 55; otherwise stabilize.")
 
-	if float(track.get("corner_bias", 0.0)) >= 0.45:
-		windows.append({
-			"type": "Corner Map",
-			"trigger": "Technical sectors dominate this track.",
-			"choice": "Use balanced or rich map for corner exit stability.",
-			"choices": _window_choices("Corner Map")
-		})
+	if corner_bias >= 0.30:
+		_append_race_window(windows, "Corner Map", "Technical sectors create corner-exit pressure.", "Use balanced or rich map for corner exit stability.")
 
-	if float(track.get("straight_bias", 0.0)) >= 0.5:
-		windows.append({
-			"type": "Straight Attack",
-			"trigger": "Long straights create safe attack windows.",
-			"choice": "Attack if reliability is above 65 and heat is below 120.",
-			"choices": _window_choices("Straight Attack")
-		})
+	if straight_bias >= 0.30:
+		_append_race_window(windows, "Straight Attack", "Straight sectors create safe attack windows.", "Attack if reliability is above 65 and heat is below 120.")
 
-	if windows.is_empty():
-		windows.append({
-			"type": "Stabilize",
-			"trigger": "No dominant stress event.",
-			"choice": "Hold baseline settings and protect consistency.",
-			"choices": _window_choices("Stabilize")
-		})
+	var fallback_types := ["High Temperature", "Corner Map", "Straight Attack", "Stabilize"]
+	for fallback_type in fallback_types:
+		if windows.size() >= 3:
+			break
+		if _race_window_present(windows, fallback_type):
+			continue
+		_append_race_window(windows, fallback_type, _fallback_window_trigger(fallback_type), _fallback_window_choice(fallback_type))
 
 	return windows.slice(0, min(windows.size(), 4))
+
+func _append_race_window(windows: Array, window_type: String, trigger: String, choice: String) -> void:
+	if _race_window_present(windows, window_type):
+		return
+
+	windows.append({
+		"type": window_type,
+		"trigger": trigger,
+		"choice": choice,
+		"choices": _window_choices(window_type)
+	})
+
+func _race_window_present(windows: Array, window_type: String) -> bool:
+	for item in windows:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var window: Dictionary = item
+		if str(window.get("type", "")) == window_type:
+			return true
+
+	return false
+
+func _fallback_window_trigger(window_type: String) -> String:
+	match window_type:
+		"Boost Spike":
+			return "Short acceleration zone tests the current power delivery."
+		"High Temperature":
+			return "Race load creates a thermal management decision."
+		"Corner Map":
+			return "Mid-lap direction changes test response and exit stability."
+		"Straight Attack":
+			return "A clear straight offers a controlled attack decision."
+		_:
+			return "No dominant stress event."
+
+func _fallback_window_choice(window_type: String) -> String:
+	match window_type:
+		"Boost Spike":
+			return "Hold boost unless heat is already climbing."
+		"High Temperature":
+			return "Stabilize if reliability margin is already thin."
+		"Corner Map":
+			return "Balance exit drive against heat."
+		"Straight Attack":
+			return "Attack only if heat and reliability leave room."
+		_:
+			return "Hold baseline settings and protect consistency."
 
 func _window_choices(window_type: String) -> Array:
 	match window_type:
@@ -739,6 +774,37 @@ func _validate_materials() -> bool:
 	contract_report["materials"] = _contract_entry("Material contract", materials.size(), fields, ok)
 	return ok
 
+func _validate_tracks() -> bool:
+	var fields := ["id", "name", "laps", "length_km", "base_lap_time", "straight_bias", "corner_bias", "endurance_bias", "heat_stress", "description"]
+	var ok := _validate_records(tracks, fields, "track", TRACKS_PATH)
+	ok = _validate_unique_ids(tracks, "track", TRACKS_PATH) and ok
+
+	for index in range(tracks.size()):
+		var record: Variant = tracks[index]
+		if typeof(record) != TYPE_DICTIONARY:
+			continue
+
+		var track: Dictionary = record
+		var label := _record_location("track", index, TRACKS_PATH)
+		ok = _validate_string_field(track, "id", label) and ok
+		ok = _validate_string_field(track, "name", label) and ok
+		ok = _validate_number_field(track, "laps", label, 1.0) and ok
+		ok = _validate_number_field(track, "length_km", label, 0.1) and ok
+		ok = _validate_number_field(track, "base_lap_time", label, 1.0) and ok
+		ok = _validate_number_field(track, "straight_bias", label, 0.0, 1.0) and ok
+		ok = _validate_number_field(track, "corner_bias", label, 0.0, 1.0) and ok
+		ok = _validate_number_field(track, "endurance_bias", label, 0.0, 1.0) and ok
+		ok = _validate_number_field(track, "heat_stress", label, 0.01) and ok
+		ok = _validate_string_field(track, "description", label) and ok
+
+		var bias_total := float(track.get("straight_bias", 0.0)) + float(track.get("corner_bias", 0.0)) + float(track.get("endurance_bias", 0.0))
+		if bias_total <= 0.0:
+			load_errors.append("%s track biases must total above 0." % label)
+			ok = false
+
+	contract_report["tracks"] = _contract_entry("Track contract", tracks.size(), fields, ok)
+	return ok
+
 func _contract_entry(label: String, count: int, fields: Array, ok: bool) -> Dictionary:
 	return {
 		"label": label,
@@ -943,6 +1009,12 @@ func _find_by_id(records: Array, id: String) -> Dictionary:
 			return record
 
 	return {}
+
+func _track_for_race(track_id: String) -> Dictionary:
+	if str(track_id).strip_edges() == "":
+		return _find_or_first(tracks, "")
+
+	return _find_by_id(tracks, track_id)
 
 func _find_or_first(records: Array, id: String) -> Dictionary:
 	var found := _find_by_id(records, id)

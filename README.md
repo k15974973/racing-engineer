@@ -13,7 +13,7 @@ The project currently includes Phase 0, the canonical Phase 1 Engine Builder sli
 - Engine health bar derived from block reliability, induction reliability, and material durability.
 - Timed 30-second test bench with RPM, boost, heat, reliability, and warning telemetry.
 - Persistent named setup saving, loading, deleting, and side-by-side comparison.
-- Race Sim prototype with track selection, projected lap time, sector fit, and interactive tactical windows.
+- Phase 2 Race Sim start with track selection, projected lap time, sector fit, and interactive tactical windows.
 - Analysis screen with scorecard, findings, tactical review, and rebuild suggestions from the latest race.
 - Persistent race history with saved race loading, deletion, and best-run comparison in Analysis.
 - Persistent progression prototype with clean-race unlock metadata and debug visibility; Phase 1 Builder options stay open.
@@ -33,6 +33,7 @@ From the project root, run:
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --scene 'res://scenes/Main.tscn' --quit-after 3
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/data_contract_smoke.gd'
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/curve_differentiation_smoke.gd'
+& 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/race_sim_smoke.gd'
 ```
 
 ## Source Of Truth
@@ -43,6 +44,6 @@ See `docs/implementation_source_of_truth.md` and `docs/phase_scope_audit.md`.
 
 ## Current Slice
 
-Strict Part 1 / Phase 0 + Godot Scaffold is complete. Strict Phase 1 Engine Builder is also mostly implemented around the original 3-slot model: block x induction x material.
+Strict Part 1 / Phase 0 + Godot Scaffold is complete. Strict Phase 1 Engine Builder is implemented around the original 3-slot model: block x induction x material.
 
-Race Sim, Analysis, race history, progression unlocks, garage economy, repair, Hybrid slot condition, and service events are running prototype systems for later phases or a possible roadmap extension. They should not be treated as canonical Phase 1 scope until the roadmap is revised.
+Phase 2 Race Sim has started with deterministic track results and tactical window tests. Analysis, race history, progression unlocks, garage economy, repair, Hybrid slot condition, and service events are running prototype systems for later phases or a possible roadmap extension.

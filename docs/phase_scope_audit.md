@@ -17,7 +17,7 @@ Phase 1:
 
 - Engine Builder.
 - 3-slot composable setup model: block x induction x material.
-- Parameter tuning.
+- Engine health from approved reliability and durability fields.
 - Test bench and projected setup stats.
 - Data-driven UI values through `GameData`.
 
@@ -42,6 +42,7 @@ Unassigned / Roadmap Extension:
 - Service thresholds.
 - Hybrid slot condition.
 - Service events.
+- Continuous parameter tuning, unless Phase 5 formally pulls it into launch content.
 
 These are valuable systems, but they need an explicit roadmap slot before being treated as production scope.
 
@@ -53,16 +54,21 @@ Implemented as canonical or near-canonical Phase 1:
 
 - Engine data loading.
 - Engine Builder selectors.
-- Tuning controls.
+- Engine health.
 - Projected stats.
 - Curves.
 - Test bench.
 - Saved setups.
 
-Implemented as future-phase prototype:
+Implemented as canonical Phase 2 start:
 
 - Race Sim.
 - Tactical race choices.
+- Track contract validation.
+- Race result smoke tests.
+
+Implemented as future-phase prototype:
+
 - Analysis report.
 - Race history.
 - Progression unlocks.
@@ -70,6 +76,7 @@ Implemented as future-phase prototype:
 - Local economy.
 - Hybrid slot condition.
 - Service recommendations and threshold events.
+- Continuous parameter tuning controls.
 
 ## Data Model Alignment
 
