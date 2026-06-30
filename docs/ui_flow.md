@@ -27,14 +27,14 @@ This is the first UI map for Phase 1. It keeps the player moving left to right f
 
 6. Garage Condition
    - Preview wear from saved race outcomes.
-   - Repair current garage damage before committing another run.
+   - Track credits, service cost, and budget repair before committing another run.
 
 ## Screen Layout Target
 
 - Left rail: step navigation and selected setup summary.
 - Center: active configuration controls.
 - Right rail: live curves, warnings, and track-fit hints.
-- Bottom action row: save setup, compare setup, test bench, repair, race.
+- Bottom action row: save setup, compare setup, test bench, repair, budget repair, race.
 
 ## Current Part 1 Mapping
 

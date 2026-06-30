@@ -16,6 +16,9 @@ const PROGRESSION_VERSION := 1
 const GARAGE_STATE_PATH := "user://garage_state.json"
 const GARAGE_STATE_VERSION := 1
 const GARAGE_MAX_DAMAGE := 100.0
+const GARAGE_STARTING_CREDITS := 2500
+const GARAGE_REPAIR_COST_PER_DAMAGE := 42
+const GARAGE_BUDGET_REPAIR_CREDITS := 650
 const PROGRESSION_STARTER_UNLOCKS := {
 	"blocks": ["v4", "v6", "inline_4"],
 	"inductions": ["na", "single_turbo"],
@@ -131,6 +134,7 @@ var _progression: Dictionary = {}
 var _garage_state: Dictionary = {}
 var _last_unlocks: Array = []
 var _last_damage_report: Dictionary = {}
+var _last_reward_report: Dictionary = {}
 var _race_committed := false
 
 func _ready() -> void:
@@ -986,6 +990,9 @@ func _default_garage_state() -> Dictionary:
 	return {
 		"version": GARAGE_STATE_VERSION,
 		"damage": 0.0,
+		"credits": GARAGE_STARTING_CREDITS,
+		"total_earned": 0,
+		"total_spent": 0,
 		"incident_count": 0,
 		"service_count": 0,
 		"last_message": "Garage ready."
@@ -994,6 +1001,9 @@ func _default_garage_state() -> Dictionary:
 func _normalized_garage_state(data: Dictionary) -> Dictionary:
 	var normalized := _default_garage_state()
 	normalized["damage"] = snappedf(clampf(float(data.get("damage", 0.0)), 0.0, GARAGE_MAX_DAMAGE), 0.1)
+	normalized["credits"] = max(0, int(data.get("credits", GARAGE_STARTING_CREDITS)))
+	normalized["total_earned"] = max(0, int(data.get("total_earned", 0)))
+	normalized["total_spent"] = max(0, int(data.get("total_spent", 0)))
 	normalized["incident_count"] = max(0, int(data.get("incident_count", 0)))
 	normalized["service_count"] = max(0, int(data.get("service_count", 0)))
 	normalized["last_message"] = str(data.get("last_message", normalized["last_message"]))
@@ -1014,6 +1024,60 @@ func _garage_condition_text() -> String:
 	if condition < 92.0:
 		return "Light wear: service soon."
 	return "Ready."
+
+func _garage_credits() -> int:
+	return max(0, int(_garage_state.get("credits", GARAGE_STARTING_CREDITS)))
+
+func _full_repair_cost() -> int:
+	return int(ceil(_garage_damage() * float(GARAGE_REPAIR_COST_PER_DAMAGE)))
+
+func _budget_repair_amount() -> float:
+	var budget := mini(_garage_credits(), GARAGE_BUDGET_REPAIR_CREDITS)
+	return snappedf(clampf(float(budget) / float(GARAGE_REPAIR_COST_PER_DAMAGE), 0.0, _garage_damage()), 0.1)
+
+func _race_reward_estimate(race_result: Dictionary, damage_report: Dictionary) -> Dictionary:
+	if race_result.is_empty() or race_result.has("error"):
+		return {}
+
+	var fit := float(race_result.get("fit_score", 0.0))
+	var delta := float(race_result.get("delta_vs_base", 0.0))
+	var heat := float(race_result.get("effective_heat", 100.0))
+	var reliability := float(race_result.get("effective_reliability", 100.0))
+	var damage := float(damage_report.get("damage", 0.0))
+	var base := 420
+	var fit_bonus := int(round(fit * 5.0))
+	var pace_bonus := int(round(maxf(0.0, -delta) * 36.0))
+	var clean_bonus := 180 if _is_clean_race_result(race_result) else 0
+	var risk_penalty := int(round(damage * 8.0 + maxf(0.0, heat - 125.0) * 3.0 + maxf(0.0, 55.0 - reliability) * 4.0))
+	var payout := clampi(base + fit_bonus + pace_bonus + clean_bonus - risk_penalty, 160, 1400)
+	var summary := "Earned %d credits." % payout
+	if clean_bonus > 0:
+		summary = "Clean run payout: %d credits." % payout
+	elif damage >= 20.0:
+		summary = "Risky run payout reduced to %d credits." % payout
+
+	return {
+		"credits": payout,
+		"base": base,
+		"fit_bonus": fit_bonus,
+		"pace_bonus": pace_bonus,
+		"clean_bonus": clean_bonus,
+		"risk_penalty": risk_penalty,
+		"summary": summary,
+		"applied": false
+	}
+
+func _apply_race_reward(reward: Dictionary) -> Dictionary:
+	if reward.is_empty():
+		return {}
+
+	var applied := reward.duplicate(true)
+	var credits := int(applied.get("credits", 0))
+	if credits > 0:
+		_garage_state["credits"] = _garage_credits() + credits
+		_garage_state["total_earned"] = int(_garage_state.get("total_earned", 0)) + credits
+		applied["applied"] = true
+	return applied
 
 func _apply_garage_penalty_to_setup(base_setup: Dictionary) -> Dictionary:
 	if base_setup.has("error"):
@@ -1106,6 +1170,13 @@ func _current_damage_report() -> Dictionary:
 		return _last_damage_report
 	return _damage_estimate_for_race(_race_result)
 
+func _current_reward_report() -> Dictionary:
+	if _race_result.is_empty() or _race_result.has("error"):
+		return {}
+	if not _last_reward_report.is_empty():
+		return _last_reward_report
+	return _race_reward_estimate(_race_result, _current_damage_report())
+
 func _apply_garage_damage_after_race(race_result: Dictionary) -> Dictionary:
 	var report := _damage_estimate_for_race(race_result)
 	if report.is_empty():
@@ -1128,10 +1199,34 @@ func _repair_garage() -> void:
 	if _garage_damage() <= 0.0:
 		return
 
-	_garage_state["damage"] = 0.0
+	var cost := _full_repair_cost()
+	if _garage_credits() < cost:
+		_garage_state["last_message"] = "Need %d credits for full service." % cost
+		_write_garage_state()
+		_show_view(_current_view)
+		return
+
+	_apply_garage_repair(cost, _garage_damage(), "Full service complete for %d credits." % cost)
+
+func _repair_garage_budget() -> void:
+	if _garage_damage() <= 0.0 or _garage_credits() <= 0:
+		return
+
+	var spend := mini(mini(_garage_credits(), GARAGE_BUDGET_REPAIR_CREDITS), _full_repair_cost())
+	var repair_amount := snappedf(clampf(float(spend) / float(GARAGE_REPAIR_COST_PER_DAMAGE), 0.0, _garage_damage()), 0.1)
+	_apply_garage_repair(spend, repair_amount, "Budget repair removed %0.1f damage for %d credits." % [repair_amount, spend])
+
+func _apply_garage_repair(cost: int, repair_amount: float, message: String) -> void:
+	if cost <= 0 or repair_amount <= 0.0:
+		return
+
+	_garage_state["credits"] = maxi(0, _garage_credits() - cost)
+	_garage_state["total_spent"] = int(_garage_state.get("total_spent", 0)) + cost
+	_garage_state["damage"] = snappedf(clampf(_garage_damage() - repair_amount, 0.0, GARAGE_MAX_DAMAGE), 0.1)
 	_garage_state["service_count"] = int(_garage_state.get("service_count", 0)) + 1
-	_garage_state["last_message"] = "Full service complete."
+	_garage_state["last_message"] = message
 	_last_damage_report.clear()
+	_last_reward_report.clear()
 	_write_garage_state()
 	_reset_race_result()
 	_reset_test_bench()
@@ -1221,10 +1316,15 @@ func _save_current_race() -> void:
 		return
 
 	var damage_report := _current_damage_report()
+	var reward_report := _current_reward_report()
 	if not _race_committed:
 		_apply_progression_after_race(true)
 		damage_report = _apply_garage_damage_after_race(_race_result)
 		_last_damage_report = damage_report.duplicate(true)
+		reward_report = _apply_race_reward(_race_reward_estimate(_race_result, damage_report))
+		_last_reward_report = reward_report.duplicate(true)
+		_garage_state["last_message"] = "%s %s" % [str(reward_report.get("summary", "")), str(_garage_state.get("last_message", ""))]
+		_write_garage_state()
 		_race_committed = true
 
 	var name := "Race %d" % _race_history_counter
@@ -1236,7 +1336,8 @@ func _save_current_race() -> void:
 		"track_id": _race_track_id,
 		"decisions": _race_decisions.duplicate(true),
 		"result": _race_result.duplicate(true),
-		"garage_damage": damage_report.duplicate(true)
+		"garage_damage": damage_report.duplicate(true),
+		"garage_reward": reward_report.duplicate(true)
 	})
 	_write_race_history()
 	_show_view(VIEW_RACE_SIM)
@@ -1252,6 +1353,7 @@ func _load_race_history_entry(index: int) -> void:
 	_race_decisions = record.get("decisions", {}).duplicate(true)
 	_race_result = GameData.calculate_race_result(_current_setup(), _race_track_id, _race_decisions)
 	_last_damage_report = record.get("garage_damage", _damage_estimate_for_race(_race_result)).duplicate(true)
+	_last_reward_report = record.get("garage_reward", _race_reward_estimate(_race_result, _last_damage_report)).duplicate(true)
 	_race_committed = true
 	_reset_test_bench()
 	_show_view(VIEW_RACE_SIM)
@@ -1325,7 +1427,8 @@ func _serialize_race_history_entry(record: Dictionary) -> Dictionary:
 		"tuning": record.get("tuning", {}).duplicate(true),
 		"track_id": str(record.get("track_id", "")),
 		"decisions": record.get("decisions", {}).duplicate(true),
-		"garage_damage": record.get("garage_damage", {}).duplicate(true)
+		"garage_damage": record.get("garage_damage", {}).duplicate(true),
+		"garage_reward": record.get("garage_reward", {}).duplicate(true)
 	}
 
 func _deserialize_race_history_entry(raw: Dictionary) -> Dictionary:
@@ -1348,7 +1451,8 @@ func _deserialize_race_history_entry(raw: Dictionary) -> Dictionary:
 		"track_id": track_id,
 		"decisions": decisions.duplicate(true),
 		"result": result,
-		"garage_damage": raw.get("garage_damage", {}).duplicate(true)
+		"garage_damage": raw.get("garage_damage", {}).duplicate(true),
+		"garage_reward": raw.get("garage_reward", {}).duplicate(true)
 	}
 
 func _tuning_slider(label_text: String, key: String, min_value: float, max_value: float, step: float, unit: String) -> VBoxContainer:
@@ -1665,6 +1769,17 @@ func _race_result_panel() -> PanelContainer:
 		else:
 			stack.add_child(_body_text("Save Race applies this wear to the garage state."))
 
+	var reward_report := _current_reward_report()
+	if not reward_report.is_empty():
+		stack.add_child(_label("Race Payout", 16, Color.html("#111827")))
+		stack.add_child(_metric_row("Credits", "+%s" % reward_report.get("credits", "0")))
+		stack.add_child(_metric_row("Risk penalty", "-%s" % reward_report.get("risk_penalty", "0")))
+		stack.add_child(_body_text(str(reward_report.get("summary", ""))))
+		if bool(reward_report.get("applied", false)):
+			stack.add_child(_status("Payout has been added to garage credits.", true))
+		else:
+			stack.add_child(_body_text("Save Race adds this payout once."))
+
 	stack.add_child(_label("Sector Fit", 16, Color.html("#111827")))
 	for sector in _race_result["sectors"]:
 		var text := "%s - rating %s, weight %s\n%s" % [sector.get("name", "Sector"), sector.get("rating", "?"), sector.get("bias", "?"), sector.get("note", "")]
@@ -1763,6 +1878,9 @@ func _race_history_card(index: int) -> PanelContainer:
 	var damage_report: Dictionary = record.get("garage_damage", {})
 	if not damage_report.is_empty():
 		stack.add_child(_metric_row("Wear", "+%s" % damage_report.get("damage", "0")))
+	var reward_report: Dictionary = record.get("garage_reward", {})
+	if not reward_report.is_empty():
+		stack.add_child(_metric_row("Credits", "+%s" % reward_report.get("credits", "0")))
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 6)
@@ -1854,6 +1972,7 @@ func _on_race_track_selected(index: int, option: OptionButton) -> void:
 	_race_result.clear()
 	_race_decisions.clear()
 	_last_damage_report.clear()
+	_last_reward_report.clear()
 	_race_committed = false
 	_show_view(VIEW_RACE_SIM)
 
@@ -1862,6 +1981,7 @@ func _run_race_sim() -> void:
 	_ensure_race_track()
 	_race_result = GameData.calculate_race_result(_current_setup(), _race_track_id, _race_decisions)
 	_last_damage_report = _damage_estimate_for_race(_race_result)
+	_last_reward_report = _race_reward_estimate(_race_result, _last_damage_report)
 	_race_committed = false
 	_apply_progression_after_race(false)
 	_show_view(VIEW_RACE_SIM)
@@ -1874,6 +1994,7 @@ func _reset_race_result() -> void:
 	_race_result.clear()
 	_race_decisions.clear()
 	_last_damage_report.clear()
+	_last_reward_report.clear()
 	_race_committed = false
 
 func _render_analysis(layout: VBoxContainer) -> void:
@@ -2103,11 +2224,19 @@ func _garage_status_panel() -> PanelContainer:
 
 	var condition := _garage_condition()
 	var damage := _garage_damage()
+	var full_cost := _full_repair_cost()
+	var budget_amount := _budget_repair_amount()
 	stack.add_child(_label("Garage Condition", 16, Color.html("#111827")))
+	stack.add_child(_metric_row("Credits", str(_garage_credits())))
 	stack.add_child(_meter_row("Condition", condition, 100.0, true))
 	stack.add_child(_metric_row("Damage", "%s / 100" % snappedf(damage, 0.1)))
+	stack.add_child(_metric_row("Full service cost", "%d credits" % full_cost))
+	if budget_amount > 0.0 and damage > 0.0:
+		stack.add_child(_metric_row("Budget repair", "%0.1f damage" % budget_amount))
 	stack.add_child(_metric_row("Incidents", str(_garage_state.get("incident_count", 0))))
 	stack.add_child(_metric_row("Services", str(_garage_state.get("service_count", 0))))
+	stack.add_child(_metric_row("Earned", str(_garage_state.get("total_earned", 0))))
+	stack.add_child(_metric_row("Spent", str(_garage_state.get("total_spent", 0))))
 	stack.add_child(_status(_garage_condition_text(), condition >= 70.0))
 
 	var last_message := str(_garage_state.get("last_message", ""))
@@ -2120,9 +2249,15 @@ func _garage_status_panel() -> PanelContainer:
 
 	var repair_button := Button.new()
 	repair_button.text = "Repair All"
-	repair_button.disabled = damage <= 0.0
+	repair_button.disabled = damage <= 0.0 or _garage_credits() < full_cost
 	repair_button.pressed.connect(_repair_garage)
 	actions.add_child(repair_button)
+
+	var budget_button := Button.new()
+	budget_button.text = "Budget Repair"
+	budget_button.disabled = damage <= 0.0 or _garage_credits() <= 0
+	budget_button.pressed.connect(_repair_garage_budget)
+	actions.add_child(budget_button)
 	return panel
 
 func _progression_panel() -> PanelContainer:
