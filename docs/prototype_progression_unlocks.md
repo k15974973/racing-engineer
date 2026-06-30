@@ -1,8 +1,8 @@
-# Phase 1 Progression Unlocks
+# Prototype Progression And Unlocks
 
 ## Purpose
 
-The progression layer turns the current prototype into a clearer `Build -> Race -> Analyze -> Rebuild` loop. It is intentionally lightweight: no currency, repair timers, backend, account state, or online validation yet.
+The progression layer is a future-phase prototype that turns the current build into a clearer `Build -> Race -> Analyze -> Rebuild` loop. It is not canonical Phase 1 scope unless the roadmap is revised.
 
 ## Persistence
 

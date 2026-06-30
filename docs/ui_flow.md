@@ -38,6 +38,6 @@ This is the first UI map for Phase 1. It keeps the player moving left to right f
 - Right rail: live curves, warnings, and track-fit hints.
 - Bottom action row: save setup, compare setup, test bench, repair, budget repair, race.
 
-## Current Part 1 Mapping
+## Current Prototype Mapping
 
-The current Godot shell maps this flow into interactive Engine Builder controls, a Race Sim screen, Analysis, Roadmap, and Data Smoke Test. Phase 1 should keep expanding these mechanics while keeping part data and progression state outside hardcoded UI values.
+The current Godot shell maps this flow into interactive Engine Builder controls, plus future-phase prototype screens for Race Sim, Analysis, Roadmap, and Data Smoke Test. Canonical Phase 1 should keep the block x induction x material model stable while prototype systems remain clearly labeled.

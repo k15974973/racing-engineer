@@ -180,7 +180,7 @@ func _build_shell() -> void:
 	root.add_child(header)
 
 	header.add_child(_label("Racing Engineer", 24, Color.html("#111827")))
-	header.add_child(_body_text("Phase 1 start: data-driven engine builder controls, projected setup stats, and smoke-test view."))
+	header.add_child(_body_text("Engine Builder prototype with future-phase race, analysis, and garage systems clearly separated in docs."))
 
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 8)
@@ -1066,13 +1066,16 @@ func _garage_part_damage(key: String) -> float:
 func _garage_part_damage_label(key: String) -> String:
 	match key:
 		"block":
-			return "Block wear"
+			return "Block condition"
 		"induction":
-			return "Induction wear"
+			return "Induction condition"
 		"material":
-			return "Material wear"
+			return "Material condition"
 		_:
-			return "%s wear" % key.capitalize()
+			return "%s condition" % key.capitalize()
+
+func _garage_slot_condition(key: String) -> float:
+	return snappedf(clampf(100.0 - _garage_part_damage(key), 0.0, 100.0), 0.1)
 
 func _garage_condition() -> float:
 	return snappedf(clampf(100.0 - _garage_damage(), 0.0, 100.0), 0.1)
@@ -1177,11 +1180,11 @@ func _part_service_recommendation(key: String, severity: String, wear: float) ->
 		"material":
 			body = "Reduce heat load or use cooling decisions. Material wear is raising heat and lowering margin."
 		_:
-			body = "Service this part group before another high-risk run."
+			body = "Service this slot group before another high-risk run."
 	return {
 		"severity": severity,
-		"title": "%s at %0.1f wear" % [_garage_part_damage_label(key), wear],
-		"body": body
+			"title": "%s at %0.1f/100" % [_garage_part_damage_label(key), _garage_slot_condition(key)],
+			"body": body
 	}
 
 func _apply_race_reward(reward: Dictionary) -> Dictionary:
@@ -1224,7 +1227,7 @@ func _apply_garage_penalty_to_setup(base_setup: Dictionary) -> Dictionary:
 	setup["garage_damage"] = snappedf(damage, 0.1)
 	setup["garage_part_damage"] = _normalized_part_damage(_garage_state.get("part_damage", {}))
 	setup["garage_condition"] = _garage_condition()
-	setup["warning"] = "%s Garage wear: %0.1f damage, part wear %0.1f." % [setup.get("warning", ""), damage, _garage_total_part_damage()]
+	setup["warning"] = "%s Garage wear: %0.1f damage, slot wear %0.1f." % [setup.get("warning", ""), damage, _garage_total_part_damage()]
 	if setup.has("curves"):
 		setup["curves"] = _degraded_curves(setup.get("curves", {}), power_mult, torque_mult)
 	return setup
@@ -1348,13 +1351,17 @@ func _part_failure_event(key: String, severity: String, wear_before: float, wear
 
 func _part_wear_estimate(race_result: Dictionary, damage: float, heat_damage: float, reliability_damage: float, tactical_damage: float) -> Dictionary:
 	var setup: Dictionary = race_result.get("setup", {})
+	var block: Dictionary = setup.get("block", {})
 	var induction: Dictionary = setup.get("induction", {})
 	var material: Dictionary = setup.get("material", {})
+	var block_reliability := maxf(float(block.get("reliability_factor", 1.0)), 0.25)
+	var induction_reliability := maxf(float(induction.get("reliability_mult", 1.0)), 0.25)
+	var material_durability := maxf(float(material.get("durability_mult", 1.0)), 0.25)
 	var induction_lag := float(induction.get("lag", 0.0))
 	var material_heat_ceiling := float(material.get("max_heat_mult", 1.0))
-	var block_wear := reliability_damage * 0.65 + heat_damage * 0.3 + damage * 0.08
-	var induction_wear := tactical_damage * (0.75 + induction_lag * 0.35) + heat_damage * 0.18 + damage * 0.06
-	var material_wear := heat_damage * (0.62 / maxf(material_heat_ceiling, 0.6)) + reliability_damage * 0.18 + damage * 0.05
+	var block_wear := (reliability_damage * 0.65 + heat_damage * 0.3 + damage * 0.08) / block_reliability
+	var induction_wear := (tactical_damage * (0.75 + induction_lag * 0.35) + heat_damage * 0.18 + damage * 0.06) / induction_reliability
+	var material_wear := (heat_damage * (0.62 / maxf(material_heat_ceiling, 0.6)) + reliability_damage * 0.18 + damage * 0.05) / material_durability
 	return {
 		"block": snappedf(clampf(block_wear, 0.0, 35.0), 0.1),
 		"induction": snappedf(clampf(induction_wear, 0.0, 35.0), 0.1),
@@ -1965,7 +1972,7 @@ func _race_setup_panel() -> PanelContainer:
 	if _garage_damage() > 0.0:
 		stack.add_child(_status("Garage condition %s/100 is reducing current output." % _garage_condition(), _garage_condition() >= 70.0))
 	if _garage_total_part_damage() > 0.0:
-		stack.add_child(_body_text("Part wear: block %0.1f | induction %0.1f | material %0.1f" % [_garage_part_damage("block"), _garage_part_damage("induction"), _garage_part_damage("material")]))
+		stack.add_child(_body_text("Slot condition: block %0.1f | induction %0.1f | material %0.1f" % [_garage_slot_condition("block"), _garage_slot_condition("induction"), _garage_slot_condition("material")]))
 	return panel
 
 func _race_result_panel() -> PanelContainer:
@@ -2013,9 +2020,9 @@ func _race_result_panel() -> PanelContainer:
 		stack.add_child(_body_text(str(damage_report.get("summary", ""))))
 		var part_wear: Dictionary = damage_report.get("part_wear", {})
 		if not part_wear.is_empty():
-			stack.add_child(_metric_row("Block wear", "+%s" % part_wear.get("block", "0")))
-			stack.add_child(_metric_row("Induction wear", "+%s" % part_wear.get("induction", "0")))
-			stack.add_child(_metric_row("Material wear", "+%s" % part_wear.get("material", "0")))
+			stack.add_child(_metric_row("Block slot wear", "+%s" % part_wear.get("block", "0")))
+			stack.add_child(_metric_row("Induction slot wear", "+%s" % part_wear.get("induction", "0")))
+			stack.add_child(_metric_row("Material slot wear", "+%s" % part_wear.get("material", "0")))
 		var failure_events: Array = damage_report.get("failure_events", [])
 		if not failure_events.is_empty():
 			stack.add_child(_label("Service Events", 16, Color.html("#111827")))
@@ -2138,7 +2145,7 @@ func _race_history_card(index: int) -> PanelContainer:
 		stack.add_child(_metric_row("Wear", "+%s" % damage_report.get("damage", "0")))
 		var part_wear: Dictionary = damage_report.get("part_wear", {})
 		if not part_wear.is_empty():
-			stack.add_child(_metric_row("Parts", "B%s I%s M%s" % [part_wear.get("block", "0"), part_wear.get("induction", "0"), part_wear.get("material", "0")]))
+			stack.add_child(_metric_row("Slot wear", "B%s I%s M%s" % [part_wear.get("block", "0"), part_wear.get("induction", "0"), part_wear.get("material", "0")]))
 		var failure_events: Array = damage_report.get("failure_events", [])
 		if not failure_events.is_empty():
 			stack.add_child(_metric_row("Events", str(failure_events.size())))
@@ -2519,9 +2526,9 @@ func _garage_status_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Credits", str(_garage_credits())))
 	stack.add_child(_meter_row("Condition", condition, 100.0, true))
 	stack.add_child(_metric_row("Damage", "%s / 100" % snappedf(damage, 0.1)))
-	stack.add_child(_metric_row("Part wear total", "%s / 300" % _garage_total_part_damage()))
+	stack.add_child(_metric_row("Slot wear total", "%s / 300" % _garage_total_part_damage()))
 	for key in GARAGE_PART_KEYS:
-		stack.add_child(_metric_row(_garage_part_damage_label(key), "%s / 100" % _garage_part_damage(key)))
+		stack.add_child(_metric_row(_garage_part_damage_label(key), "%s / 100" % _garage_slot_condition(key)))
 	stack.add_child(_metric_row("Full service cost", "%d credits" % full_cost))
 	if budget_amount > 0.0 and damage > 0.0:
 		stack.add_child(_metric_row("Budget repair", "%0.1f damage" % budget_amount))
