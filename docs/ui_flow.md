@@ -28,6 +28,7 @@ This is the first UI map for Phase 1. It keeps the player moving left to right f
 6. Garage Condition
    - Preview wear from saved race outcomes.
    - Track credits, service cost, and budget repair before committing another run.
+   - Show block, induction, and material wear separately so repair risk matches the build.
 
 ## Screen Layout Target
 

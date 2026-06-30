@@ -17,6 +17,7 @@ The project currently includes Phase 0 plus the first Phase 1 Engine Builder sli
 - Persistent race history with saved race loading, deletion, and best-run comparison in Analysis.
 - Persistent progression layer with starter parts, locked advanced parts, clean-race unlock rules, and debug visibility.
 - Persistent garage condition and economy layer with race payouts, repair costs, budget service, and performance penalties while damaged.
+- Part-specific wear for block, induction, and material groups with different performance penalties and service costs.
 - Placeholder screens for Roadmap and a data smoke test.
 - Phase 0 design docs for the core loop, engine matrix, UI flow, and tactical windows.
 
@@ -24,4 +25,4 @@ Open `project.godot` with Godot 4 and run the main scene.
 
 ## Current Slice
 
-The current implementation starts Phase 1 and the first Race Sim slice without full gameplay. It intentionally avoids backend work, 3D race cameras, leaderboards, sound, particles, and PvP. The next build step is part-specific wear so blocks, induction, and materials can fail or cost service differently.
+The current implementation starts Phase 1 and the first Race Sim slice without full gameplay. It intentionally avoids backend work, 3D race cameras, leaderboards, sound, particles, and PvP. The next build step is service recommendations or lightweight part failure events from accumulated wear.

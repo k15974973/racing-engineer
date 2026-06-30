@@ -12,6 +12,7 @@ Tracked fields:
 
 - `version`: save schema version.
 - `damage`: current garage damage from 0 to 100.
+- `part_damage`: block, induction, and material wear from 0 to 100 each.
 - `credits`: current local service budget.
 - `total_earned`: lifetime credits from saved race payouts.
 - `total_spent`: lifetime credits spent on service.
@@ -26,6 +27,7 @@ Race Sim calculates projected wear from:
 - Final heat above safe thresholds.
 - Final reliability below safe thresholds.
 - Tactical decisions that add heat or reduce reliability.
+- The current setup's block, induction, and material stress profile.
 
 Running a race only previews this wear. `Save Race` commits the wear once for that result, records it in race history, pays local credits, and updates garage state. Saving another copy of the same result does not stack damage or payout again.
 
@@ -54,6 +56,12 @@ Garage damage applies lightweight penalties to the current setup:
 - Reliability, throttle response, and push margin decrease.
 - Power and torque curves are scaled to match the degraded output.
 
+Part wear modifies the penalty shape:
+
+- Block wear reduces torque, reliability, and push margin.
+- Induction wear reduces power, response, and adds heat.
+- Material wear increases heat and reduces durability margin.
+
 Saved setups remain clean design blueprints. Race Sim and Test Bench use the current garage condition.
 
 ## UI Touchpoints
@@ -61,10 +69,10 @@ Saved setups remain clean design blueprints. Race Sim and Test Bench use the cur
 - Engine Builder shows garage condition and repair action.
 - Race Sim shows garage condition, projected wear, and whether wear has already been applied.
 - Race Sim also previews race payout, risk penalty, and whether the payout has already been added.
-- Race History stores and displays wear plus credits for saved runs.
+- Race History stores and displays global wear, part wear, and credits for saved runs.
 - Analysis repeats garage status next to progression and rebuild advice.
 - Data Smoke Test shows the garage state file path and current condition.
 
 ## Next Step
 
-Add part-specific wear: blocks, induction systems, and materials should produce different failure risks, repair costs, and service recommendations. Keep it offline until async online infrastructure exists.
+Add service recommendations and lightweight part failure events from accumulated wear. Keep it offline until async online infrastructure exists.

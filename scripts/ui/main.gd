@@ -19,6 +19,7 @@ const GARAGE_MAX_DAMAGE := 100.0
 const GARAGE_STARTING_CREDITS := 2500
 const GARAGE_REPAIR_COST_PER_DAMAGE := 42
 const GARAGE_BUDGET_REPAIR_CREDITS := 650
+const GARAGE_PART_KEYS := ["block", "induction", "material"]
 const PROGRESSION_STARTER_UNLOCKS := {
 	"blocks": ["v4", "v6", "inline_4"],
 	"inductions": ["na", "single_turbo"],
@@ -990,6 +991,11 @@ func _default_garage_state() -> Dictionary:
 	return {
 		"version": GARAGE_STATE_VERSION,
 		"damage": 0.0,
+		"part_damage": {
+			"block": 0.0,
+			"induction": 0.0,
+			"material": 0.0
+		},
 		"credits": GARAGE_STARTING_CREDITS,
 		"total_earned": 0,
 		"total_spent": 0,
@@ -1001,6 +1007,7 @@ func _default_garage_state() -> Dictionary:
 func _normalized_garage_state(data: Dictionary) -> Dictionary:
 	var normalized := _default_garage_state()
 	normalized["damage"] = snappedf(clampf(float(data.get("damage", 0.0)), 0.0, GARAGE_MAX_DAMAGE), 0.1)
+	normalized["part_damage"] = _normalized_part_damage(data.get("part_damage", {}))
 	normalized["credits"] = max(0, int(data.get("credits", GARAGE_STARTING_CREDITS)))
 	normalized["total_earned"] = max(0, int(data.get("total_earned", 0)))
 	normalized["total_spent"] = max(0, int(data.get("total_spent", 0)))
@@ -1009,8 +1016,37 @@ func _normalized_garage_state(data: Dictionary) -> Dictionary:
 	normalized["last_message"] = str(data.get("last_message", normalized["last_message"]))
 	return normalized
 
+func _normalized_part_damage(raw: Variant) -> Dictionary:
+	var result := {
+		"block": 0.0,
+		"induction": 0.0,
+		"material": 0.0
+	}
+	if typeof(raw) != TYPE_DICTIONARY:
+		return result
+
+	var raw_dict: Dictionary = raw
+	for key in GARAGE_PART_KEYS:
+		result[key] = snappedf(clampf(float(raw_dict.get(key, 0.0)), 0.0, GARAGE_MAX_DAMAGE), 0.1)
+	return result
+
 func _garage_damage() -> float:
 	return clampf(float(_garage_state.get("damage", 0.0)), 0.0, GARAGE_MAX_DAMAGE)
+
+func _garage_part_damage(key: String) -> float:
+	var part_damage: Dictionary = _garage_state.get("part_damage", {})
+	return clampf(float(part_damage.get(key, 0.0)), 0.0, GARAGE_MAX_DAMAGE)
+
+func _garage_part_damage_label(key: String) -> String:
+	match key:
+		"block":
+			return "Block wear"
+		"induction":
+			return "Induction wear"
+		"material":
+			return "Material wear"
+		_:
+			return "%s wear" % key.capitalize()
 
 func _garage_condition() -> float:
 	return snappedf(clampf(100.0 - _garage_damage(), 0.0, 100.0), 0.1)
@@ -1029,11 +1065,17 @@ func _garage_credits() -> int:
 	return max(0, int(_garage_state.get("credits", GARAGE_STARTING_CREDITS)))
 
 func _full_repair_cost() -> int:
-	return int(ceil(_garage_damage() * float(GARAGE_REPAIR_COST_PER_DAMAGE)))
+	return int(ceil((_garage_damage() + _garage_total_part_damage() * 0.45) * float(GARAGE_REPAIR_COST_PER_DAMAGE)))
 
 func _budget_repair_amount() -> float:
 	var budget := mini(_garage_credits(), GARAGE_BUDGET_REPAIR_CREDITS)
 	return snappedf(clampf(float(budget) / float(GARAGE_REPAIR_COST_PER_DAMAGE), 0.0, _garage_damage()), 0.1)
+
+func _garage_total_part_damage() -> float:
+	var total := 0.0
+	for key in GARAGE_PART_KEYS:
+		total += _garage_part_damage(key)
+	return snappedf(total, 0.1)
 
 func _race_reward_estimate(race_result: Dictionary, damage_report: Dictionary) -> Dictionary:
 	if race_result.is_empty() or race_result.has("error"):
@@ -1084,16 +1126,19 @@ func _apply_garage_penalty_to_setup(base_setup: Dictionary) -> Dictionary:
 		return base_setup
 
 	var damage := _garage_damage()
-	if damage <= 0.0:
+	var block_wear := _garage_part_damage("block")
+	var induction_wear := _garage_part_damage("induction")
+	var material_wear := _garage_part_damage("material")
+	if damage <= 0.0 and block_wear <= 0.0 and induction_wear <= 0.0 and material_wear <= 0.0:
 		return base_setup
 
 	var setup := base_setup.duplicate(true)
-	var power_mult := clampf(1.0 - damage * 0.0022, 0.76, 1.0)
-	var torque_mult := clampf(1.0 - damage * 0.0016, 0.82, 1.0)
-	var heat_add := damage * 0.35
-	var reliability_sub := damage * 0.55
-	var response_sub := damage * 0.18
-	var push_sub := damage * 0.65
+	var power_mult := clampf(1.0 - damage * 0.0014 - block_wear * 0.0015 - induction_wear * 0.0022, 0.72, 1.0)
+	var torque_mult := clampf(1.0 - damage * 0.0011 - block_wear * 0.0018 - induction_wear * 0.0012, 0.78, 1.0)
+	var heat_add := damage * 0.22 + material_wear * 0.42 + induction_wear * 0.2
+	var reliability_sub := damage * 0.32 + block_wear * 0.55 + material_wear * 0.18
+	var response_sub := damage * 0.12 + induction_wear * 0.32
+	var push_sub := damage * 0.38 + block_wear * 0.42 + induction_wear * 0.24 + material_wear * 0.28
 
 	setup["peak_power_hp"] = int(round(float(setup.get("peak_power_hp", 0.0)) * power_mult))
 	setup["torque_nm"] = int(round(float(setup.get("torque_nm", 0.0)) * torque_mult))
@@ -1102,8 +1147,9 @@ func _apply_garage_penalty_to_setup(base_setup: Dictionary) -> Dictionary:
 	setup["response_score"] = snappedf(clampf(float(setup.get("response_score", 0.0)) - response_sub, 0.0, 120.0), 0.1)
 	setup["push_margin"] = snappedf(clampf(float(setup.get("push_margin", 0.0)) - push_sub, 0.0, 120.0), 0.1)
 	setup["garage_damage"] = snappedf(damage, 0.1)
+	setup["garage_part_damage"] = _normalized_part_damage(_garage_state.get("part_damage", {}))
 	setup["garage_condition"] = _garage_condition()
-	setup["warning"] = "%s Garage wear: %0.1f damage." % [setup.get("warning", ""), damage]
+	setup["warning"] = "%s Garage wear: %0.1f damage, part wear %0.1f." % [setup.get("warning", ""), damage, _garage_total_part_damage()]
 	if setup.has("curves"):
 		setup["curves"] = _degraded_curves(setup.get("curves", {}), power_mult, torque_mult)
 	return setup
@@ -1150,6 +1196,7 @@ func _damage_estimate_for_race(race_result: Dictionary) -> Dictionary:
 	elif damage > 0.0:
 		severity = "minor"
 		summary = "Minor wear predicted; service soon if stacking risky runs."
+	var part_wear := _part_wear_estimate(race_result, damage, heat_damage, reliability_damage, tactical_damage)
 
 	return {
 		"damage": damage,
@@ -1158,9 +1205,25 @@ func _damage_estimate_for_race(race_result: Dictionary) -> Dictionary:
 		"heat_component": snappedf(heat_damage, 0.1),
 		"reliability_component": snappedf(reliability_damage, 0.1),
 		"tactical_component": snappedf(tactical_damage, 0.1),
+		"part_wear": part_wear,
 		"condition_before": _garage_condition(),
 		"condition_after": snappedf(clampf(_garage_condition() - damage, 0.0, 100.0), 0.1),
 		"applied": false
+	}
+
+func _part_wear_estimate(race_result: Dictionary, damage: float, heat_damage: float, reliability_damage: float, tactical_damage: float) -> Dictionary:
+	var setup: Dictionary = race_result.get("setup", {})
+	var induction: Dictionary = setup.get("induction", {})
+	var material: Dictionary = setup.get("material", {})
+	var induction_lag := float(induction.get("lag", 0.0))
+	var material_heat_ceiling := float(material.get("max_heat_mult", 1.0))
+	var block_wear := reliability_damage * 0.65 + heat_damage * 0.3 + damage * 0.08
+	var induction_wear := tactical_damage * (0.75 + induction_lag * 0.35) + heat_damage * 0.18 + damage * 0.06
+	var material_wear := heat_damage * (0.62 / maxf(material_heat_ceiling, 0.6)) + reliability_damage * 0.18 + damage * 0.05
+	return {
+		"block": snappedf(clampf(block_wear, 0.0, 35.0), 0.1),
+		"induction": snappedf(clampf(induction_wear, 0.0, 35.0), 0.1),
+		"material": snappedf(clampf(material_wear, 0.0, 35.0), 0.1)
 	}
 
 func _current_damage_report() -> Dictionary:
@@ -1185,6 +1248,7 @@ func _apply_garage_damage_after_race(race_result: Dictionary) -> Dictionary:
 	var damage := float(report.get("damage", 0.0))
 	if damage > 0.0:
 		_garage_state["damage"] = snappedf(clampf(_garage_damage() + damage, 0.0, GARAGE_MAX_DAMAGE), 0.1)
+		_apply_part_wear(report.get("part_wear", {}))
 		_garage_state["incident_count"] = int(_garage_state.get("incident_count", 0)) + 1
 		_garage_state["last_message"] = str(report.get("summary", "Garage wear recorded."))
 	else:
@@ -1194,6 +1258,16 @@ func _apply_garage_damage_after_race(race_result: Dictionary) -> Dictionary:
 	report["applied"] = true
 	_write_garage_state()
 	return report
+
+func _apply_part_wear(raw_part_wear: Variant) -> void:
+	if typeof(raw_part_wear) != TYPE_DICTIONARY:
+		return
+
+	var current := _normalized_part_damage(_garage_state.get("part_damage", {}))
+	var part_wear: Dictionary = raw_part_wear
+	for key in GARAGE_PART_KEYS:
+		current[key] = snappedf(clampf(float(current.get(key, 0.0)) + float(part_wear.get(key, 0.0)), 0.0, GARAGE_MAX_DAMAGE), 0.1)
+	_garage_state["part_damage"] = current
 
 func _repair_garage() -> void:
 	if _garage_damage() <= 0.0:
@@ -1220,9 +1294,12 @@ func _apply_garage_repair(cost: int, repair_amount: float, message: String) -> v
 	if cost <= 0 or repair_amount <= 0.0:
 		return
 
+	var old_damage := maxf(_garage_damage(), 0.01)
+	var repair_ratio := clampf(repair_amount / old_damage, 0.0, 1.0)
 	_garage_state["credits"] = maxi(0, _garage_credits() - cost)
 	_garage_state["total_spent"] = int(_garage_state.get("total_spent", 0)) + cost
 	_garage_state["damage"] = snappedf(clampf(_garage_damage() - repair_amount, 0.0, GARAGE_MAX_DAMAGE), 0.1)
+	_reduce_part_wear(repair_ratio)
 	_garage_state["service_count"] = int(_garage_state.get("service_count", 0)) + 1
 	_garage_state["last_message"] = message
 	_last_damage_report.clear()
@@ -1231,6 +1308,12 @@ func _apply_garage_repair(cost: int, repair_amount: float, message: String) -> v
 	_reset_race_result()
 	_reset_test_bench()
 	_show_view(_current_view)
+
+func _reduce_part_wear(repair_ratio: float) -> void:
+	var current := _normalized_part_damage(_garage_state.get("part_damage", {}))
+	for key in GARAGE_PART_KEYS:
+		current[key] = snappedf(clampf(float(current.get(key, 0.0)) * (1.0 - repair_ratio), 0.0, GARAGE_MAX_DAMAGE), 0.1)
+	_garage_state["part_damage"] = current
 
 func _load_saved_setups() -> void:
 	_saved_setups.clear()
@@ -1719,6 +1802,8 @@ func _race_setup_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Reliability", "%s / 120" % setup["reliability_score"]))
 	if _garage_damage() > 0.0:
 		stack.add_child(_status("Garage condition %s/100 is reducing current output." % _garage_condition(), _garage_condition() >= 70.0))
+	if _garage_total_part_damage() > 0.0:
+		stack.add_child(_body_text("Part wear: block %0.1f | induction %0.1f | material %0.1f" % [_garage_part_damage("block"), _garage_part_damage("induction"), _garage_part_damage("material")]))
 	return panel
 
 func _race_result_panel() -> PanelContainer:
@@ -1764,6 +1849,11 @@ func _race_result_panel() -> PanelContainer:
 		stack.add_child(_metric_row("Projected damage", "+%s" % damage_report.get("damage", "0")))
 		stack.add_child(_metric_row("Condition after save", "%s / 100" % damage_report.get("condition_after", _garage_condition())))
 		stack.add_child(_body_text(str(damage_report.get("summary", ""))))
+		var part_wear: Dictionary = damage_report.get("part_wear", {})
+		if not part_wear.is_empty():
+			stack.add_child(_metric_row("Block wear", "+%s" % part_wear.get("block", "0")))
+			stack.add_child(_metric_row("Induction wear", "+%s" % part_wear.get("induction", "0")))
+			stack.add_child(_metric_row("Material wear", "+%s" % part_wear.get("material", "0")))
 		if bool(damage_report.get("applied", false)):
 			stack.add_child(_status("Garage damage has been applied for this saved run.", true))
 		else:
@@ -1878,6 +1968,9 @@ func _race_history_card(index: int) -> PanelContainer:
 	var damage_report: Dictionary = record.get("garage_damage", {})
 	if not damage_report.is_empty():
 		stack.add_child(_metric_row("Wear", "+%s" % damage_report.get("damage", "0")))
+		var part_wear: Dictionary = damage_report.get("part_wear", {})
+		if not part_wear.is_empty():
+			stack.add_child(_metric_row("Parts", "B%s I%s M%s" % [part_wear.get("block", "0"), part_wear.get("induction", "0"), part_wear.get("material", "0")]))
 	var reward_report: Dictionary = record.get("garage_reward", {})
 	if not reward_report.is_empty():
 		stack.add_child(_metric_row("Credits", "+%s" % reward_report.get("credits", "0")))
@@ -2230,6 +2323,9 @@ func _garage_status_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Credits", str(_garage_credits())))
 	stack.add_child(_meter_row("Condition", condition, 100.0, true))
 	stack.add_child(_metric_row("Damage", "%s / 100" % snappedf(damage, 0.1)))
+	stack.add_child(_metric_row("Part wear total", "%s / 300" % _garage_total_part_damage()))
+	for key in GARAGE_PART_KEYS:
+		stack.add_child(_metric_row(_garage_part_damage_label(key), "%s / 100" % _garage_part_damage(key)))
 	stack.add_child(_metric_row("Full service cost", "%d credits" % full_cost))
 	if budget_amount > 0.0 and damage > 0.0:
 		stack.add_child(_metric_row("Budget repair", "%0.1f damage" % budget_amount))
