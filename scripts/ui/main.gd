@@ -13,6 +13,9 @@ const RACE_HISTORY_PATH := "user://race_history.json"
 const RACE_HISTORY_VERSION := 1
 const PROGRESSION_PATH := "user://progression.json"
 const PROGRESSION_VERSION := 1
+const GARAGE_STATE_PATH := "user://garage_state.json"
+const GARAGE_STATE_VERSION := 1
+const GARAGE_MAX_DAMAGE := 100.0
 const PROGRESSION_STARTER_UNLOCKS := {
 	"blocks": ["v4", "v6", "inline_4"],
 	"inductions": ["na", "single_turbo"],
@@ -125,10 +128,14 @@ var _race_decisions: Dictionary = {}
 var _race_history_counter := 1
 var _race_history: Array = []
 var _progression: Dictionary = {}
+var _garage_state: Dictionary = {}
 var _last_unlocks: Array = []
+var _last_damage_report: Dictionary = {}
+var _race_committed := false
 
 func _ready() -> void:
 	_load_progression()
+	_load_garage_state()
 	_load_saved_setups()
 	_load_race_history()
 	_build_shell()
@@ -254,6 +261,7 @@ func _render_engine_builder(layout: VBoxContainer) -> void:
 	controls.add_child(_builder_choice_panel("Induction", GameData.inductions, "induction"))
 	controls.add_child(_builder_choice_panel("Material", GameData.materials, "material"))
 	controls.add_child(_progression_panel())
+	controls.add_child(_garage_status_panel())
 	controls.add_child(_builder_tuning_panel())
 	controls.add_child(_setup_save_panel())
 
@@ -697,7 +705,7 @@ func _saved_setup_card(index: int) -> PanelContainer:
 	return panel
 
 func _save_current_setup() -> void:
-	var setup := _current_setup()
+	var setup := _current_base_setup()
 	if setup.has("error"):
 		return
 
@@ -946,6 +954,189 @@ func _join_strings(items: Array, delimiter: String) -> String:
 		text += str(items[index])
 	return text
 
+func _load_garage_state() -> void:
+	_garage_state = _default_garage_state()
+	if not FileAccess.file_exists(GARAGE_STATE_PATH):
+		_write_garage_state()
+		return
+
+	var text := FileAccess.get_file_as_string(GARAGE_STATE_PATH)
+	var parsed: Variant = JSON.parse_string(text)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		_write_garage_state()
+		return
+
+	var data: Dictionary = parsed
+	if int(data.get("version", 0)) != GARAGE_STATE_VERSION:
+		_write_garage_state()
+		return
+
+	_garage_state = _normalized_garage_state(data)
+	_write_garage_state()
+
+func _write_garage_state() -> void:
+	var file := FileAccess.open(GARAGE_STATE_PATH, FileAccess.WRITE)
+	if file == null:
+		push_warning("Could not write garage state to %s" % GARAGE_STATE_PATH)
+		return
+
+	file.store_string(JSON.stringify(_garage_state, "\t"))
+
+func _default_garage_state() -> Dictionary:
+	return {
+		"version": GARAGE_STATE_VERSION,
+		"damage": 0.0,
+		"incident_count": 0,
+		"service_count": 0,
+		"last_message": "Garage ready."
+	}
+
+func _normalized_garage_state(data: Dictionary) -> Dictionary:
+	var normalized := _default_garage_state()
+	normalized["damage"] = snappedf(clampf(float(data.get("damage", 0.0)), 0.0, GARAGE_MAX_DAMAGE), 0.1)
+	normalized["incident_count"] = max(0, int(data.get("incident_count", 0)))
+	normalized["service_count"] = max(0, int(data.get("service_count", 0)))
+	normalized["last_message"] = str(data.get("last_message", normalized["last_message"]))
+	return normalized
+
+func _garage_damage() -> float:
+	return clampf(float(_garage_state.get("damage", 0.0)), 0.0, GARAGE_MAX_DAMAGE)
+
+func _garage_condition() -> float:
+	return snappedf(clampf(100.0 - _garage_damage(), 0.0, 100.0), 0.1)
+
+func _garage_condition_text() -> String:
+	var condition := _garage_condition()
+	if condition < 45.0:
+		return "Critical service required."
+	if condition < 70.0:
+		return "Worn: performance is degraded."
+	if condition < 92.0:
+		return "Light wear: service soon."
+	return "Ready."
+
+func _apply_garage_penalty_to_setup(base_setup: Dictionary) -> Dictionary:
+	if base_setup.has("error"):
+		return base_setup
+
+	var damage := _garage_damage()
+	if damage <= 0.0:
+		return base_setup
+
+	var setup := base_setup.duplicate(true)
+	var power_mult := clampf(1.0 - damage * 0.0022, 0.76, 1.0)
+	var torque_mult := clampf(1.0 - damage * 0.0016, 0.82, 1.0)
+	var heat_add := damage * 0.35
+	var reliability_sub := damage * 0.55
+	var response_sub := damage * 0.18
+	var push_sub := damage * 0.65
+
+	setup["peak_power_hp"] = int(round(float(setup.get("peak_power_hp", 0.0)) * power_mult))
+	setup["torque_nm"] = int(round(float(setup.get("torque_nm", 0.0)) * torque_mult))
+	setup["heat_score"] = snappedf(clampf(float(setup.get("heat_score", 0.0)) + heat_add, 0.0, 180.0), 0.1)
+	setup["reliability_score"] = snappedf(clampf(float(setup.get("reliability_score", 0.0)) - reliability_sub, 0.0, 120.0), 0.1)
+	setup["response_score"] = snappedf(clampf(float(setup.get("response_score", 0.0)) - response_sub, 0.0, 120.0), 0.1)
+	setup["push_margin"] = snappedf(clampf(float(setup.get("push_margin", 0.0)) - push_sub, 0.0, 120.0), 0.1)
+	setup["garage_damage"] = snappedf(damage, 0.1)
+	setup["garage_condition"] = _garage_condition()
+	setup["warning"] = "%s Garage wear: %0.1f damage." % [setup.get("warning", ""), damage]
+	if setup.has("curves"):
+		setup["curves"] = _degraded_curves(setup.get("curves", {}), power_mult, torque_mult)
+	return setup
+
+func _degraded_curves(curves: Dictionary, power_mult: float, torque_mult: float) -> Dictionary:
+	var degraded := curves.duplicate(true)
+	var power_points: Array = degraded.get("power", [])
+	var torque_points: Array = degraded.get("torque", [])
+	for point in power_points:
+		if typeof(point) == TYPE_DICTIONARY:
+			point["value"] = snappedf(float(point.get("value", 0.0)) * power_mult, 0.1)
+	for point in torque_points:
+		if typeof(point) == TYPE_DICTIONARY:
+			point["value"] = snappedf(float(point.get("value", 0.0)) * torque_mult, 0.1)
+	degraded["max_power"] = int(round(float(degraded.get("max_power", 0.0)) * power_mult))
+	degraded["max_torque"] = int(round(float(degraded.get("max_torque", 0.0)) * torque_mult))
+	return degraded
+
+func _damage_estimate_for_race(race_result: Dictionary) -> Dictionary:
+	if race_result.is_empty() or race_result.has("error"):
+		return {}
+
+	var heat := float(race_result.get("effective_heat", 100.0))
+	var reliability := float(race_result.get("effective_reliability", 100.0))
+	var effects: Dictionary = race_result.get("decision_effects", {})
+	var heat_delta := maxf(0.0, float(effects.get("heat_delta", 0.0)))
+	var reliability_delta := maxf(0.0, -float(effects.get("reliability_delta", 0.0)))
+	var heat_damage := maxf(0.0, heat - 110.0) * 0.18 + maxf(0.0, heat - 125.0) * 0.35 + maxf(0.0, heat - 140.0) * 0.55
+	var reliability_damage := maxf(0.0, 70.0 - reliability) * 0.15 + maxf(0.0, 55.0 - reliability) * 0.35 + maxf(0.0, 40.0 - reliability) * 0.6
+	var tactical_damage := heat_delta * 0.08 + reliability_delta * 0.25
+	var damage := clampf(heat_damage + reliability_damage + tactical_damage, 0.0, 45.0)
+	if damage < 1.0:
+		damage = 0.0
+	damage = snappedf(damage, 0.1)
+
+	var severity := "none"
+	var summary := "No new service damage predicted."
+	if damage >= 25.0:
+		severity = "critical"
+		summary = "Critical wear predicted: repair before another push run."
+	elif damage >= 12.0:
+		severity = "major"
+		summary = "Major wear predicted from heat and reliability stress."
+	elif damage > 0.0:
+		severity = "minor"
+		summary = "Minor wear predicted; service soon if stacking risky runs."
+
+	return {
+		"damage": damage,
+		"severity": severity,
+		"summary": summary,
+		"heat_component": snappedf(heat_damage, 0.1),
+		"reliability_component": snappedf(reliability_damage, 0.1),
+		"tactical_component": snappedf(tactical_damage, 0.1),
+		"condition_before": _garage_condition(),
+		"condition_after": snappedf(clampf(_garage_condition() - damage, 0.0, 100.0), 0.1),
+		"applied": false
+	}
+
+func _current_damage_report() -> Dictionary:
+	if _race_result.is_empty() or _race_result.has("error"):
+		return {}
+	if not _last_damage_report.is_empty():
+		return _last_damage_report
+	return _damage_estimate_for_race(_race_result)
+
+func _apply_garage_damage_after_race(race_result: Dictionary) -> Dictionary:
+	var report := _damage_estimate_for_race(race_result)
+	if report.is_empty():
+		return {}
+
+	var damage := float(report.get("damage", 0.0))
+	if damage > 0.0:
+		_garage_state["damage"] = snappedf(clampf(_garage_damage() + damage, 0.0, GARAGE_MAX_DAMAGE), 0.1)
+		_garage_state["incident_count"] = int(_garage_state.get("incident_count", 0)) + 1
+		_garage_state["last_message"] = str(report.get("summary", "Garage wear recorded."))
+	else:
+		_garage_state["last_message"] = "No new service damage from the saved race."
+
+	report["condition_after"] = _garage_condition()
+	report["applied"] = true
+	_write_garage_state()
+	return report
+
+func _repair_garage() -> void:
+	if _garage_damage() <= 0.0:
+		return
+
+	_garage_state["damage"] = 0.0
+	_garage_state["service_count"] = int(_garage_state.get("service_count", 0)) + 1
+	_garage_state["last_message"] = "Full service complete."
+	_last_damage_report.clear()
+	_write_garage_state()
+	_reset_race_result()
+	_reset_test_bench()
+	_show_view(_current_view)
+
 func _load_saved_setups() -> void:
 	_saved_setups.clear()
 	if not FileAccess.file_exists(SAVED_SETUPS_PATH):
@@ -1029,6 +1220,13 @@ func _save_current_race() -> void:
 	if _race_result.is_empty() or _race_result.has("error"):
 		return
 
+	var damage_report := _current_damage_report()
+	if not _race_committed:
+		_apply_progression_after_race(true)
+		damage_report = _apply_garage_damage_after_race(_race_result)
+		_last_damage_report = damage_report.duplicate(true)
+		_race_committed = true
+
 	var name := "Race %d" % _race_history_counter
 	_race_history_counter += 1
 	_race_history.append({
@@ -1037,9 +1235,9 @@ func _save_current_race() -> void:
 		"tuning": _builder_tuning.duplicate(true),
 		"track_id": _race_track_id,
 		"decisions": _race_decisions.duplicate(true),
-		"result": _race_result.duplicate(true)
+		"result": _race_result.duplicate(true),
+		"garage_damage": damage_report.duplicate(true)
 	})
-	_apply_progression_after_race(true)
 	_write_race_history()
 	_show_view(VIEW_RACE_SIM)
 
@@ -1053,6 +1251,8 @@ func _load_race_history_entry(index: int) -> void:
 	_race_track_id = str(record.get("track_id", _race_track_id))
 	_race_decisions = record.get("decisions", {}).duplicate(true)
 	_race_result = GameData.calculate_race_result(_current_setup(), _race_track_id, _race_decisions)
+	_last_damage_report = record.get("garage_damage", _damage_estimate_for_race(_race_result)).duplicate(true)
+	_race_committed = true
 	_reset_test_bench()
 	_show_view(VIEW_RACE_SIM)
 
@@ -1124,7 +1324,8 @@ func _serialize_race_history_entry(record: Dictionary) -> Dictionary:
 		"selection": record.get("selection", {}).duplicate(true),
 		"tuning": record.get("tuning", {}).duplicate(true),
 		"track_id": str(record.get("track_id", "")),
-		"decisions": record.get("decisions", {}).duplicate(true)
+		"decisions": record.get("decisions", {}).duplicate(true),
+		"garage_damage": record.get("garage_damage", {}).duplicate(true)
 	}
 
 func _deserialize_race_history_entry(raw: Dictionary) -> Dictionary:
@@ -1146,7 +1347,8 @@ func _deserialize_race_history_entry(raw: Dictionary) -> Dictionary:
 		"tuning": tuning.duplicate(true),
 		"track_id": track_id,
 		"decisions": decisions.duplicate(true),
-		"result": result
+		"result": result,
+		"garage_damage": raw.get("garage_damage", {}).duplicate(true)
 	}
 
 func _tuning_slider(label_text: String, key: String, min_value: float, max_value: float, step: float, unit: String) -> VBoxContainer:
@@ -1177,6 +1379,10 @@ func _tuning_slider(label_text: String, key: String, min_value: float, max_value
 	return stack
 
 func _current_setup() -> Dictionary:
+	var base_setup := _current_base_setup()
+	return _apply_garage_penalty_to_setup(base_setup)
+
+func _current_base_setup() -> Dictionary:
 	for key in _builder_selection.keys():
 		var selected_id := str(_builder_selection[key])
 		if not _is_part_unlocked(key, selected_id):
@@ -1323,6 +1529,7 @@ func _render_race_sim(layout: VBoxContainer) -> void:
 
 	controls.add_child(_race_track_panel())
 	controls.add_child(_race_setup_panel())
+	controls.add_child(_garage_status_panel())
 
 	var results := VBoxContainer.new()
 	results.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1406,6 +1613,8 @@ func _race_setup_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Torque", "%s Nm" % setup["torque_nm"]))
 	stack.add_child(_metric_row("Heat", "%s / 160" % setup["heat_score"]))
 	stack.add_child(_metric_row("Reliability", "%s / 120" % setup["reliability_score"]))
+	if _garage_damage() > 0.0:
+		stack.add_child(_status("Garage condition %s/100 is reducing current output." % _garage_condition(), _garage_condition() >= 70.0))
 	return panel
 
 func _race_result_panel() -> PanelContainer:
@@ -1445,6 +1654,17 @@ func _race_result_panel() -> PanelContainer:
 	if not _last_unlocks.is_empty():
 		stack.add_child(_status("Progression: %s" % _join_strings(_last_unlocks, " | "), true))
 
+	var damage_report := _current_damage_report()
+	if not damage_report.is_empty():
+		stack.add_child(_label("Garage Impact", 16, Color.html("#111827")))
+		stack.add_child(_metric_row("Projected damage", "+%s" % damage_report.get("damage", "0")))
+		stack.add_child(_metric_row("Condition after save", "%s / 100" % damage_report.get("condition_after", _garage_condition())))
+		stack.add_child(_body_text(str(damage_report.get("summary", ""))))
+		if bool(damage_report.get("applied", false)):
+			stack.add_child(_status("Garage damage has been applied for this saved run.", true))
+		else:
+			stack.add_child(_body_text("Save Race applies this wear to the garage state."))
+
 	stack.add_child(_label("Sector Fit", 16, Color.html("#111827")))
 	for sector in _race_result["sectors"]:
 		var text := "%s - rating %s, weight %s\n%s" % [sector.get("name", "Sector"), sector.get("rating", "?"), sector.get("bias", "?"), sector.get("note", "")]
@@ -1465,7 +1685,7 @@ func _race_result_panel() -> PanelContainer:
 	stack.add_child(actions)
 
 	var save_button := Button.new()
-	save_button.text = "Save Race"
+	save_button.text = "Save Copy" if _race_committed else "Save Race"
 	save_button.pressed.connect(_save_current_race)
 	actions.add_child(save_button)
 	return panel
@@ -1540,6 +1760,9 @@ func _race_history_card(index: int) -> PanelContainer:
 	stack.add_child(_metric_row("Lap", "%ss" % result.get("lap_time", "?")))
 	stack.add_child(_metric_row("Total", "%ss" % result.get("total_time", "?")))
 	stack.add_child(_metric_row("Fit", "%s / 130" % result.get("fit_score", "?")))
+	var damage_report: Dictionary = record.get("garage_damage", {})
+	if not damage_report.is_empty():
+		stack.add_child(_metric_row("Wear", "+%s" % damage_report.get("damage", "0")))
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 6)
@@ -1630,12 +1853,16 @@ func _on_race_track_selected(index: int, option: OptionButton) -> void:
 	_race_track_id = str(option.get_item_metadata(index))
 	_race_result.clear()
 	_race_decisions.clear()
+	_last_damage_report.clear()
+	_race_committed = false
 	_show_view(VIEW_RACE_SIM)
 
 func _run_race_sim() -> void:
 	_ensure_builder_selection()
 	_ensure_race_track()
 	_race_result = GameData.calculate_race_result(_current_setup(), _race_track_id, _race_decisions)
+	_last_damage_report = _damage_estimate_for_race(_race_result)
+	_race_committed = false
 	_apply_progression_after_race(false)
 	_show_view(VIEW_RACE_SIM)
 
@@ -1646,6 +1873,8 @@ func _on_race_window_choice(window_type: String, choice_id: String) -> void:
 func _reset_race_result() -> void:
 	_race_result.clear()
 	_race_decisions.clear()
+	_last_damage_report.clear()
+	_race_committed = false
 
 func _render_analysis(layout: VBoxContainer) -> void:
 	layout.add_child(_section_title("Analysis"))
@@ -1679,6 +1908,7 @@ func _render_analysis(layout: VBoxContainer) -> void:
 	left.add_child(_analysis_findings_panel(analysis))
 	right.add_child(_analysis_suggestions_panel(analysis))
 	right.add_child(_progression_panel())
+	right.add_child(_garage_status_panel())
 	right.add_child(_analysis_history_comparison_panel(analysis))
 	right.add_child(_analysis_decisions_panel(_race_result))
 
@@ -1855,6 +2085,46 @@ func _analysis_decisions_panel(race_result: Dictionary) -> PanelContainer:
 
 	return panel
 
+func _garage_status_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+
+	var condition := _garage_condition()
+	var damage := _garage_damage()
+	stack.add_child(_label("Garage Condition", 16, Color.html("#111827")))
+	stack.add_child(_meter_row("Condition", condition, 100.0, true))
+	stack.add_child(_metric_row("Damage", "%s / 100" % snappedf(damage, 0.1)))
+	stack.add_child(_metric_row("Incidents", str(_garage_state.get("incident_count", 0))))
+	stack.add_child(_metric_row("Services", str(_garage_state.get("service_count", 0))))
+	stack.add_child(_status(_garage_condition_text(), condition >= 70.0))
+
+	var last_message := str(_garage_state.get("last_message", ""))
+	if last_message != "":
+		stack.add_child(_body_text(last_message))
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	stack.add_child(actions)
+
+	var repair_button := Button.new()
+	repair_button.text = "Repair All"
+	repair_button.disabled = damage <= 0.0
+	repair_button.pressed.connect(_repair_garage)
+	actions.add_child(repair_button)
+	return panel
+
 func _progression_panel() -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1951,7 +2221,9 @@ func _render_debug(layout: VBoxContainer) -> void:
 	layout.add_child(_body_text("Saved setup file: %s" % ProjectSettings.globalize_path(SAVED_SETUPS_PATH)))
 	layout.add_child(_body_text("Race history file: %s" % ProjectSettings.globalize_path(RACE_HISTORY_PATH)))
 	layout.add_child(_body_text("Progression file: %s" % ProjectSettings.globalize_path(PROGRESSION_PATH)))
+	layout.add_child(_body_text("Garage state file: %s" % ProjectSettings.globalize_path(GARAGE_STATE_PATH)))
 	layout.add_child(_progression_panel())
+	layout.add_child(_garage_status_panel())
 
 	if errors.is_empty():
 		layout.add_child(_status("PASS: GameData loaded every Part 1 data collection without validation errors.", true))

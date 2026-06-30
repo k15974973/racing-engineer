@@ -14,6 +14,7 @@
 - Analysis explains the latest race with a scorecard, findings, tactical review, and rebuild direction.
 - Race history persists to `user://race_history.json` and lets Analysis compare against the best saved run on the same track.
 - Progression persists to `user://progression.json`, gates advanced parts, and unlocks parts from clean race results.
+- Garage condition persists to `user://garage_state.json`; saved race wear can degrade current performance until repaired.
 - Current projected stats:
   - Peak power
   - Torque
@@ -27,4 +28,4 @@
 
 ## Next Phase 1 Step
 
-Add a lightweight failure and repair layer so heat, reliability, and aggressive tactical choices produce visible consequences before economy or online systems arrive.
+Add a lightweight garage economy or parts wear cost model so repair decisions create tradeoffs without requiring backend or online systems.

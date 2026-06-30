@@ -45,4 +45,4 @@ Locked parts still appear in Engine Builder selectors with a locked label, but c
 
 ## Next Step
 
-Add a small failure and repair layer: aggressive heat/reliability outcomes should create a repair warning, cooldown cost, or degraded next-run condition. Keep it local-only until the async online layer exists.
+The first failure and repair layer now exists in `user://garage_state.json`. The next progression-adjacent step is to connect repair decisions to a lightweight local cost model, without adding backend or online validation yet.

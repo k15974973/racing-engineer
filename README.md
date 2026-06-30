@@ -16,6 +16,7 @@ The project currently includes Phase 0 plus the first Phase 1 Engine Builder sli
 - Analysis screen with scorecard, findings, tactical review, and rebuild suggestions from the latest race.
 - Persistent race history with saved race loading, deletion, and best-run comparison in Analysis.
 - Persistent progression layer with starter parts, locked advanced parts, clean-race unlock rules, and debug visibility.
+- Persistent garage condition layer with projected race wear, repair action, and performance penalties while damaged.
 - Placeholder screens for Roadmap and a data smoke test.
 - Phase 0 design docs for the core loop, engine matrix, UI flow, and tactical windows.
 
@@ -23,4 +24,4 @@ Open `project.godot` with Godot 4 and run the main scene.
 
 ## Current Slice
 
-The current implementation starts Phase 1 and the first Race Sim slice without full gameplay. It intentionally avoids backend work, 3D race cameras, leaderboards, sound, particles, and PvP. The next build step is a lightweight failure/repair layer so risky tuning has a visible cost before economy or online features arrive.
+The current implementation starts Phase 1 and the first Race Sim slice without full gameplay. It intentionally avoids backend work, 3D race cameras, leaderboards, sound, particles, and PvP. The next build step is a lightweight garage economy or parts wear cost model layered on top of the local repair loop.
