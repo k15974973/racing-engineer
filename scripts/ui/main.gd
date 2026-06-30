@@ -2667,6 +2667,7 @@ func _render_debug(layout: VBoxContainer) -> void:
 	var summary := GameData.get_summary()
 	var errors = summary["errors"]
 	layout.add_child(_body_text("Loaded blocks: %s | inductions: %s | materials: %s | tracks: %s | roadmap phases: %s" % [summary["blocks"], summary["inductions"], summary["materials"], summary["tracks"], summary["roadmap_phases"]]))
+	layout.add_child(_data_contract_status_panel())
 	layout.add_child(_body_text("Saved setup file: %s" % ProjectSettings.globalize_path(SAVED_SETUPS_PATH)))
 	layout.add_child(_body_text("Race history file: %s" % ProjectSettings.globalize_path(RACE_HISTORY_PATH)))
 	layout.add_child(_body_text("Progression file: %s" % ProjectSettings.globalize_path(PROGRESSION_PATH)))
@@ -2675,12 +2676,41 @@ func _render_debug(layout: VBoxContainer) -> void:
 	layout.add_child(_garage_status_panel())
 
 	if errors.is_empty():
-		layout.add_child(_status("PASS: GameData loaded every Part 1 data collection without validation errors.", true))
+		layout.add_child(_status("PASS: GameData loaded every Phase 1 data contract without validation errors.", true))
 	else:
 		layout.add_child(_status("FAIL: GameData found validation errors.", false))
 		layout.add_child(_bullet_list(errors))
 
 	layout.add_child(_body_text("Use this screen as the quick manual check before starting Phase 1 builder interactions."))
+
+func _data_contract_status_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+	stack.add_child(_label("Phase 1 Data Contracts", 16, Color.html("#111827")))
+
+	var report := GameData.get_contract_report()
+	for key in ["blocks", "inductions", "materials"]:
+		var contract: Dictionary = report.get(key, {})
+		if contract.is_empty():
+			stack.add_child(_status("%s contract missing from GameData report." % key.capitalize(), false))
+			continue
+
+		var ok := bool(contract.get("ok", false))
+		stack.add_child(_status("%s: %s record(s)" % [contract.get("label", key.capitalize()), contract.get("count", 0)], ok))
+		stack.add_child(_body_text("Fields: %s" % contract.get("fields", "")))
+
+	return panel
 
 func _data_column(title: String, records: Array, detail_key: String) -> PanelContainer:
 	var panel := PanelContainer.new()

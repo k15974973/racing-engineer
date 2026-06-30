@@ -24,6 +24,15 @@ The project currently includes Phase 0, the canonical Phase 1 Engine Builder sli
 
 Open `project.godot` with Godot 4 and run the main scene.
 
+## Headless Checks
+
+From the project root, run:
+
+```powershell
+& 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --scene 'res://scenes/Main.tscn' --quit-after 3
+& 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/data_contract_smoke.gd'
+```
+
 ## Source Of Truth
 
 This GitHub repository is the primary implementation source of truth. Other scaffold folders or agent outputs should be treated as design input until they are intentionally ported into this repo.

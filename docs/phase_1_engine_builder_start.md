@@ -5,6 +5,8 @@
 - Engine Builder now has interactive selectors for block, induction, and material.
 - Selection changes immediately rebuild the projected setup card.
 - Projection uses structured data through `GameData`, not hardcoded UI values.
+- `GameData` validates required fields, value types, numeric ranges, rpm ordering, and duplicate ids for the Phase 1 data contracts.
+- `tests/data_contract_smoke.gd` verifies the block, induction, and material contracts through Godot headless mode.
 - Basic tuning sliders update projected stats in real time.
 - Power and torque curves redraw from the current setup and tuning values.
 - Test Bench runs for 30 seconds with live RPM, boost, heat, reliability, and status telemetry.
@@ -35,4 +37,4 @@ The following systems are implemented in the running prototype, but they are not
 
 ## Next Canonical Phase 1 Step
 
-Harden the Engine Builder data contracts and UI polish before expanding later-phase systems. Race, analysis, economy, and wear should be treated as prototype learnings until the roadmap is revised.
+Polish the Engine Builder interaction layer before expanding later-phase systems: clearer selector details, tighter comparison readability, and better empty/error states. Race, analysis, economy, and wear should be treated as prototype learnings until the roadmap is revised.

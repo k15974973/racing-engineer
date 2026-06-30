@@ -12,6 +12,7 @@ var materials: Array = []
 var roadmap_phases: Array = []
 var tracks: Array = []
 var load_errors: Array[String] = []
+var contract_report: Dictionary = {}
 
 func _ready() -> void:
 	reload()
@@ -27,10 +28,11 @@ func reload() -> bool:
 	return load_errors.is_empty()
 
 func validate_engine_data() -> bool:
+	contract_report.clear()
 	var ok := true
-	ok = _validate_records(blocks, ["id", "name", "rpm_range", "torque_profile", "mass", "heat_factor", "reliability_factor"], "engine block") and ok
-	ok = _validate_records(inductions, ["id", "name", "power_mult", "lag", "heat_mult", "reliability_mult"], "induction system") and ok
-	ok = _validate_records(materials, ["id", "name", "mass_mult", "max_heat_mult", "durability_mult"], "material") and ok
+	ok = _validate_engine_blocks() and ok
+	ok = _validate_induction_systems() and ok
+	ok = _validate_materials() and ok
 	ok = _validate_records(roadmap_phases, ["id", "name", "duration", "goal", "deliverable"], "roadmap phase") and ok
 	ok = _validate_records(tracks, ["id", "name", "laps", "length_km", "base_lap_time", "straight_bias", "corner_bias", "endurance_bias", "heat_stress", "description"], "track") and ok
 	return ok
@@ -44,6 +46,9 @@ func get_summary() -> Dictionary:
 		"tracks": tracks.size(),
 		"errors": load_errors.duplicate()
 	}
+
+func get_contract_report() -> Dictionary:
+	return contract_report.duplicate(true)
 
 func get_collection(collection_name: String) -> Array:
 	match collection_name:
@@ -662,6 +667,152 @@ func _validate_records(records: Array, required_keys: Array, label: String) -> b
 				ok = false
 
 	return ok
+
+func _validate_engine_blocks() -> bool:
+	var fields := ["id", "name", "rpm_range", "torque_profile", "mass", "heat_factor", "reliability_factor"]
+	var ok := _validate_records(blocks, fields, "engine block")
+	ok = _validate_unique_ids(blocks, "engine block") and ok
+
+	for index in range(blocks.size()):
+		var record: Variant = blocks[index]
+		if typeof(record) != TYPE_DICTIONARY:
+			continue
+
+		var block: Dictionary = record
+		var label := "Engine block %d" % index
+		ok = _validate_string_field(block, "id", label) and ok
+		ok = _validate_string_field(block, "name", label) and ok
+		ok = _validate_rpm_range(block, label) and ok
+		ok = _validate_string_field(block, "torque_profile", label) and ok
+		ok = _validate_number_field(block, "mass", label, 1.0) and ok
+		ok = _validate_number_field(block, "heat_factor", label, 0.01) and ok
+		ok = _validate_number_field(block, "reliability_factor", label, 0.01) and ok
+
+	contract_report["blocks"] = _contract_entry("Block contract", blocks.size(), fields, ok)
+	return ok
+
+func _validate_induction_systems() -> bool:
+	var fields := ["id", "name", "power_mult", "lag", "heat_mult", "reliability_mult"]
+	var ok := _validate_records(inductions, fields, "induction system")
+	ok = _validate_unique_ids(inductions, "induction system") and ok
+
+	for index in range(inductions.size()):
+		var record: Variant = inductions[index]
+		if typeof(record) != TYPE_DICTIONARY:
+			continue
+
+		var induction: Dictionary = record
+		var label := "Induction system %d" % index
+		ok = _validate_string_field(induction, "id", label) and ok
+		ok = _validate_string_field(induction, "name", label) and ok
+		ok = _validate_number_field(induction, "power_mult", label, 0.01) and ok
+		ok = _validate_number_field(induction, "lag", label, 0.0, 1.0) and ok
+		ok = _validate_number_field(induction, "heat_mult", label, 0.01) and ok
+		ok = _validate_number_field(induction, "reliability_mult", label, 0.01) and ok
+
+	contract_report["inductions"] = _contract_entry("Induction contract", inductions.size(), fields, ok)
+	return ok
+
+func _validate_materials() -> bool:
+	var fields := ["id", "name", "mass_mult", "max_heat_mult", "durability_mult"]
+	var ok := _validate_records(materials, fields, "material")
+	ok = _validate_unique_ids(materials, "material") and ok
+
+	for index in range(materials.size()):
+		var record: Variant = materials[index]
+		if typeof(record) != TYPE_DICTIONARY:
+			continue
+
+		var material: Dictionary = record
+		var label := "Material %d" % index
+		ok = _validate_string_field(material, "id", label) and ok
+		ok = _validate_string_field(material, "name", label) and ok
+		ok = _validate_number_field(material, "mass_mult", label, 0.01) and ok
+		ok = _validate_number_field(material, "max_heat_mult", label, 0.01) and ok
+		ok = _validate_number_field(material, "durability_mult", label, 0.01) and ok
+
+	contract_report["materials"] = _contract_entry("Material contract", materials.size(), fields, ok)
+	return ok
+
+func _contract_entry(label: String, count: int, fields: Array, ok: bool) -> Dictionary:
+	return {
+		"label": label,
+		"count": count,
+		"fields": ", ".join(fields),
+		"ok": ok
+	}
+
+func _validate_unique_ids(records: Array, label: String) -> bool:
+	var ok := true
+	var seen := {}
+	for index in range(records.size()):
+		var record: Variant = records[index]
+		if typeof(record) != TYPE_DICTIONARY:
+			continue
+
+		var id := str(record.get("id", ""))
+		if id == "":
+			continue
+		if seen.has(id):
+			load_errors.append("%s %d has duplicate id '%s'." % [label.capitalize(), index, id])
+			ok = false
+			continue
+		seen[id] = true
+
+	return ok
+
+func _validate_string_field(record: Dictionary, key: String, label: String) -> bool:
+	if not record.has(key):
+		return false
+
+	var value: Variant = record.get(key)
+	if typeof(value) != TYPE_STRING or str(value).strip_edges() == "":
+		load_errors.append("%s field '%s' must be a non-empty string." % [label, key])
+		return false
+
+	return true
+
+func _validate_number_field(record: Dictionary, key: String, label: String, min_value: float, max_value: float = INF) -> bool:
+	if not record.has(key):
+		return false
+
+	var value: Variant = record.get(key)
+	if not _is_number(value):
+		load_errors.append("%s field '%s' must be numeric." % [label, key])
+		return false
+
+	var number := float(value)
+	if number < min_value or number > max_value:
+		if max_value == INF:
+			load_errors.append("%s field '%s' must be >= %s." % [label, key, min_value])
+		else:
+			load_errors.append("%s field '%s' must be between %s and %s." % [label, key, min_value, max_value])
+		return false
+
+	return true
+
+func _validate_rpm_range(record: Dictionary, label: String) -> bool:
+	if not record.has("rpm_range"):
+		return false
+
+	var value: Variant = record.get("rpm_range")
+	if typeof(value) != TYPE_ARRAY:
+		load_errors.append("%s field 'rpm_range' must be an array." % label)
+		return false
+
+	var rpm_range: Array = value
+	if rpm_range.size() != 2 or not _is_number(rpm_range[0]) or not _is_number(rpm_range[1]):
+		load_errors.append("%s field 'rpm_range' must contain two numeric values." % label)
+		return false
+
+	if float(rpm_range[0]) >= float(rpm_range[1]):
+		load_errors.append("%s field 'rpm_range' must be ordered from low to high rpm." % label)
+		return false
+
+	return true
+
+func _is_number(value: Variant) -> bool:
+	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
 
 func _build_power_torque_curves(block: Dictionary, induction: Dictionary, rpm_min: int, rpm_max: int, peak_torque: int, peak_power: int, tuning: Dictionary) -> Dictionary:
 	var torque_points: Array = []
