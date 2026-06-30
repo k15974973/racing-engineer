@@ -16,6 +16,7 @@
 - Progression persists to `user://progression.json`, gates advanced parts, and unlocks parts from clean race results.
 - Garage condition and local credits persist to `user://garage_state.json`; saved race wear can degrade current performance until repaired.
 - Part wear tracks block, induction, and material damage separately and applies different stat penalties.
+- Service recommendations and threshold events explain which part group needs attention.
 - Current projected stats:
   - Peak power
   - Torque
@@ -29,4 +30,4 @@
 
 ## Next Phase 1 Step
 
-Add service recommendations or lightweight part failure events from accumulated block, induction, and material wear.
+Expand balance content: more track profiles, more part profiles, and tuned service thresholds.

@@ -12,6 +12,7 @@ Credits live inside `user://garage_state.json` with the rest of garage condition
 - `total_earned`: lifetime credits from committed race results.
 - `total_spent`: lifetime credits spent on service.
 - `part_damage`: block, induction, and material wear that affects service cost.
+- `failure_events`: recent threshold events that explain service priorities.
 
 Existing garage saves migrate by receiving the starter balance.
 
@@ -40,8 +41,8 @@ Budget repair spends up to 650 credits and removes proportional global and part 
 - Race Result previews payout and risk penalty before saving.
 - Race Result marks payout as applied after save.
 - Race History shows credits earned and part wear per saved run.
-- Garage Condition shows credits, part wear, full service cost, budget repair estimate, lifetime earned, and lifetime spent.
+- Garage Condition shows credits, part wear, service recommendations, recent service events, full service cost, budget repair estimate, lifetime earned, and lifetime spent.
 
 ## Next Step
 
-Add service recommendations and lightweight part failure events from accumulated wear.
+Expand content and balancing: more track profiles, more part profiles, and tuned service thresholds.

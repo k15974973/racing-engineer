@@ -41,10 +41,11 @@ Full service clears global damage and part wear when the player can afford it. B
 ## UI Touchpoints
 
 - Race Result previews block, induction, and material wear before save.
+- Race Result previews service events when wear crosses thresholds.
 - Race History stores and displays part wear for saved runs.
 - Current Setup warns when part wear is degrading output.
-- Garage Condition shows current part wear and includes it in service cost.
+- Garage Condition shows current part wear, service recommendations, recent events, and service cost.
 
 ## Next Step
 
-Add service recommendations and lightweight part failure events when a specific part group crosses high wear thresholds.
+Expand content and balancing: more track profiles, more part profiles, and tuned service thresholds.

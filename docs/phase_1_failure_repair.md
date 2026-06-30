@@ -18,6 +18,8 @@ Tracked fields:
 - `total_spent`: lifetime credits spent on service.
 - `incident_count`: number of saved races that added wear.
 - `service_count`: number of full repairs performed.
+- `failure_event_count`: number of service threshold events recorded.
+- `failure_events`: recent service threshold events.
 - `last_message`: latest garage feedback shown in UI.
 
 ## Damage Flow
@@ -42,6 +44,16 @@ The garage starts with 2500 credits. Saved race payouts are based on:
 - Risk penalty from projected damage and extreme heat/reliability outcomes.
 
 Payouts are local-only and are not server-authoritative.
+
+## Service Events
+
+When a saved race pushes a part group across a wear threshold, the garage records a lightweight service event:
+
+- Minor threshold: 45 wear.
+- Major threshold: 70 wear.
+- Critical threshold: 90 wear.
+
+Events are stored in `failure_events` and shown in Race Result, Race History, and Garage Condition. They do not hard-fail a race yet; they explain why service should be prioritized.
 
 ## Repair Flow
 
@@ -70,9 +82,10 @@ Saved setups remain clean design blueprints. Race Sim and Test Bench use the cur
 - Race Sim shows garage condition, projected wear, and whether wear has already been applied.
 - Race Sim also previews race payout, risk penalty, and whether the payout has already been added.
 - Race History stores and displays global wear, part wear, and credits for saved runs.
+- Garage Condition shows service recommendations and recent service events.
 - Analysis repeats garage status next to progression and rebuild advice.
 - Data Smoke Test shows the garage state file path and current condition.
 
 ## Next Step
 
-Add service recommendations and lightweight part failure events from accumulated wear. Keep it offline until async online infrastructure exists.
+Expand content and balancing: more track profiles, more part profiles, and tuned service thresholds. Keep it offline until async online infrastructure exists.

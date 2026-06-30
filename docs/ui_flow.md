@@ -29,6 +29,7 @@ This is the first UI map for Phase 1. It keeps the player moving left to right f
    - Preview wear from saved race outcomes.
    - Track credits, service cost, and budget repair before committing another run.
    - Show block, induction, and material wear separately so repair risk matches the build.
+   - Show service recommendations and recent threshold events.
 
 ## Screen Layout Target
 

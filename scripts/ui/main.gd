@@ -1001,6 +1001,8 @@ func _default_garage_state() -> Dictionary:
 		"total_spent": 0,
 		"incident_count": 0,
 		"service_count": 0,
+		"failure_event_count": 0,
+		"failure_events": [],
 		"last_message": "Garage ready."
 	}
 
@@ -1013,6 +1015,8 @@ func _normalized_garage_state(data: Dictionary) -> Dictionary:
 	normalized["total_spent"] = max(0, int(data.get("total_spent", 0)))
 	normalized["incident_count"] = max(0, int(data.get("incident_count", 0)))
 	normalized["service_count"] = max(0, int(data.get("service_count", 0)))
+	normalized["failure_event_count"] = max(0, int(data.get("failure_event_count", 0)))
+	normalized["failure_events"] = _normalized_failure_events(data.get("failure_events", []))
 	normalized["last_message"] = str(data.get("last_message", normalized["last_message"]))
 	return normalized
 
@@ -1029,6 +1033,28 @@ func _normalized_part_damage(raw: Variant) -> Dictionary:
 	for key in GARAGE_PART_KEYS:
 		result[key] = snappedf(clampf(float(raw_dict.get(key, 0.0)), 0.0, GARAGE_MAX_DAMAGE), 0.1)
 	return result
+
+func _normalized_failure_events(raw: Variant) -> Array:
+	var result: Array = []
+	if typeof(raw) != TYPE_ARRAY:
+		return result
+
+	for item in raw:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var event: Dictionary = item
+		result.append({
+			"id": str(event.get("id", "")),
+			"part": str(event.get("part", "")),
+			"severity": str(event.get("severity", "minor")),
+			"title": str(event.get("title", "Service Event")),
+			"body": str(event.get("body", "")),
+			"wear_before": snappedf(float(event.get("wear_before", 0.0)), 0.1),
+			"wear_after": snappedf(float(event.get("wear_after", 0.0)), 0.1),
+			"applied": bool(event.get("applied", false))
+		})
+
+	return result.slice(maxi(result.size() - 8, 0), result.size())
 
 func _garage_damage() -> float:
 	return clampf(float(_garage_state.get("damage", 0.0)), 0.0, GARAGE_MAX_DAMAGE)
@@ -1107,6 +1133,55 @@ func _race_reward_estimate(race_result: Dictionary, damage_report: Dictionary) -
 		"risk_penalty": risk_penalty,
 		"summary": summary,
 		"applied": false
+	}
+
+func _service_recommendations() -> Array:
+	var recommendations: Array = []
+	if _garage_damage() >= 70.0:
+		recommendations.append({
+			"severity": "critical",
+			"title": "Full service required",
+			"body": "Global condition is below safe race range. Repair before another push-heavy run."
+		})
+	elif _garage_damage() >= 35.0:
+		recommendations.append({
+			"severity": "warn",
+			"title": "General wear service",
+			"body": "Garage damage is stacking. Budget repair can recover enough condition for testing."
+		})
+
+	for key in GARAGE_PART_KEYS:
+		var wear := _garage_part_damage(key)
+		if wear >= 85.0:
+			recommendations.append(_part_service_recommendation(key, "critical", wear))
+		elif wear >= 65.0:
+			recommendations.append(_part_service_recommendation(key, "warn", wear))
+		elif wear >= 40.0:
+			recommendations.append(_part_service_recommendation(key, "info", wear))
+
+	if recommendations.is_empty():
+		recommendations.append({
+			"severity": "good",
+			"title": "No service priority",
+			"body": "Wear is inside the prototype safe range."
+		})
+	return recommendations
+
+func _part_service_recommendation(key: String, severity: String, wear: float) -> Dictionary:
+	var body := ""
+	match key:
+		"block":
+			body = "Reduce compression or avoid repeated low-reliability runs. Block wear is cutting torque and durability."
+		"induction":
+			body = "Reduce boost or avoid repeated push windows. Induction wear is cutting response and peak output."
+		"material":
+			body = "Reduce heat load or use cooling decisions. Material wear is raising heat and lowering margin."
+		_:
+			body = "Service this part group before another high-risk run."
+	return {
+		"severity": severity,
+		"title": "%s at %0.1f wear" % [_garage_part_damage_label(key), wear],
+		"body": body
 	}
 
 func _apply_race_reward(reward: Dictionary) -> Dictionary:
@@ -1197,6 +1272,8 @@ func _damage_estimate_for_race(race_result: Dictionary) -> Dictionary:
 		severity = "minor"
 		summary = "Minor wear predicted; service soon if stacking risky runs."
 	var part_wear := _part_wear_estimate(race_result, damage, heat_damage, reliability_damage, tactical_damage)
+	var part_damage_after := _projected_part_damage_after(part_wear)
+	var failure_events := _failure_events_for_projected_wear(part_wear, part_damage_after)
 
 	return {
 		"damage": damage,
@@ -1206,8 +1283,66 @@ func _damage_estimate_for_race(race_result: Dictionary) -> Dictionary:
 		"reliability_component": snappedf(reliability_damage, 0.1),
 		"tactical_component": snappedf(tactical_damage, 0.1),
 		"part_wear": part_wear,
+		"part_damage_after": part_damage_after,
+		"failure_events": failure_events,
 		"condition_before": _garage_condition(),
 		"condition_after": snappedf(clampf(_garage_condition() - damage, 0.0, 100.0), 0.1),
+		"applied": false
+	}
+
+func _projected_part_damage_after(part_wear: Dictionary) -> Dictionary:
+	var result := {}
+	for key in GARAGE_PART_KEYS:
+		result[key] = snappedf(clampf(_garage_part_damage(key) + float(part_wear.get(key, 0.0)), 0.0, GARAGE_MAX_DAMAGE), 0.1)
+	return result
+
+func _failure_events_for_projected_wear(part_wear: Dictionary, part_damage_after: Dictionary) -> Array:
+	var events: Array = []
+	for key in GARAGE_PART_KEYS:
+		var wear_before := _garage_part_damage(key)
+		var wear_after := float(part_damage_after.get(key, wear_before))
+		var delta := float(part_wear.get(key, 0.0))
+		if delta <= 0.0:
+			continue
+
+		var severity := ""
+		if wear_before < 90.0 and wear_after >= 90.0:
+			severity = "critical"
+		elif wear_before < 70.0 and wear_after >= 70.0:
+			severity = "major"
+		elif wear_before < 45.0 and wear_after >= 45.0:
+			severity = "minor"
+
+		if severity == "":
+			continue
+
+		events.append(_part_failure_event(key, severity, wear_before, wear_after))
+	return events
+
+func _part_failure_event(key: String, severity: String, wear_before: float, wear_after: float) -> Dictionary:
+	var title := ""
+	var body := ""
+	match key:
+		"block":
+			title = "Block service threshold crossed"
+			body = "Block wear is high enough to threaten torque delivery and reliability."
+		"induction":
+			title = "Induction service threshold crossed"
+			body = "Induction wear is high enough to threaten boost response and peak output."
+		"material":
+			title = "Material service threshold crossed"
+			body = "Material wear is high enough to threaten heat control and durability margin."
+		_:
+			title = "Part service threshold crossed"
+			body = "Wear has crossed a service threshold."
+	return {
+		"id": "%s_%s_%d" % [key, severity, Time.get_ticks_msec()],
+		"part": key,
+		"severity": severity,
+		"title": title,
+		"body": body,
+		"wear_before": snappedf(wear_before, 0.1),
+		"wear_after": snappedf(wear_after, 0.1),
 		"applied": false
 	}
 
@@ -1249,8 +1384,13 @@ func _apply_garage_damage_after_race(race_result: Dictionary) -> Dictionary:
 	if damage > 0.0:
 		_garage_state["damage"] = snappedf(clampf(_garage_damage() + damage, 0.0, GARAGE_MAX_DAMAGE), 0.1)
 		_apply_part_wear(report.get("part_wear", {}))
+		var applied_events := _record_failure_events(report.get("failure_events", []))
+		report["failure_events"] = applied_events
 		_garage_state["incident_count"] = int(_garage_state.get("incident_count", 0)) + 1
-		_garage_state["last_message"] = str(report.get("summary", "Garage wear recorded."))
+		if applied_events.is_empty():
+			_garage_state["last_message"] = str(report.get("summary", "Garage wear recorded."))
+		else:
+			_garage_state["last_message"] = "%s %d service event(s) recorded." % [str(report.get("summary", "Garage wear recorded.")), applied_events.size()]
 	else:
 		_garage_state["last_message"] = "No new service damage from the saved race."
 
@@ -1258,6 +1398,28 @@ func _apply_garage_damage_after_race(race_result: Dictionary) -> Dictionary:
 	report["applied"] = true
 	_write_garage_state()
 	return report
+
+func _record_failure_events(raw_events: Variant) -> Array:
+	var applied_events: Array = []
+	if typeof(raw_events) != TYPE_ARRAY:
+		return applied_events
+
+	var history: Array = _garage_state.get("failure_events", [])
+	for item in raw_events:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var event: Dictionary = item.duplicate(true)
+		event["applied"] = true
+		event["id"] = "service_%d" % (int(_garage_state.get("failure_event_count", 0)) + applied_events.size() + 1)
+		applied_events.append(event)
+		history.append(event)
+
+	if applied_events.is_empty():
+		return applied_events
+
+	_garage_state["failure_event_count"] = int(_garage_state.get("failure_event_count", 0)) + applied_events.size()
+	_garage_state["failure_events"] = _normalized_failure_events(history)
+	return applied_events
 
 func _apply_part_wear(raw_part_wear: Variant) -> void:
 	if typeof(raw_part_wear) != TYPE_DICTIONARY:
@@ -1854,6 +2016,12 @@ func _race_result_panel() -> PanelContainer:
 			stack.add_child(_metric_row("Block wear", "+%s" % part_wear.get("block", "0")))
 			stack.add_child(_metric_row("Induction wear", "+%s" % part_wear.get("induction", "0")))
 			stack.add_child(_metric_row("Material wear", "+%s" % part_wear.get("material", "0")))
+		var failure_events: Array = damage_report.get("failure_events", [])
+		if not failure_events.is_empty():
+			stack.add_child(_label("Service Events", 16, Color.html("#111827")))
+			for event in failure_events:
+				if typeof(event) == TYPE_DICTIONARY:
+					stack.add_child(_service_event_card(event))
 		if bool(damage_report.get("applied", false)):
 			stack.add_child(_status("Garage damage has been applied for this saved run.", true))
 		else:
@@ -1971,6 +2139,9 @@ func _race_history_card(index: int) -> PanelContainer:
 		var part_wear: Dictionary = damage_report.get("part_wear", {})
 		if not part_wear.is_empty():
 			stack.add_child(_metric_row("Parts", "B%s I%s M%s" % [part_wear.get("block", "0"), part_wear.get("induction", "0"), part_wear.get("material", "0")]))
+		var failure_events: Array = damage_report.get("failure_events", [])
+		if not failure_events.is_empty():
+			stack.add_child(_metric_row("Events", str(failure_events.size())))
 	var reward_report: Dictionary = record.get("garage_reward", {})
 	if not reward_report.is_empty():
 		stack.add_child(_metric_row("Credits", "+%s" % reward_report.get("credits", "0")))
@@ -2299,6 +2470,31 @@ func _analysis_decisions_panel(race_result: Dictionary) -> PanelContainer:
 
 	return panel
 
+func _service_event_card(event: Dictionary) -> PanelContainer:
+	var severity := str(event.get("severity", "minor"))
+	var color := Color.html("#92400E")
+	if severity == "critical":
+		color = Color.html("#9F1239")
+	elif severity == "major":
+		color = Color.html("#B45309")
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 4)
+	margin.add_child(stack)
+	stack.add_child(_label(str(event.get("title", "Service Event")), 14, color))
+	stack.add_child(_body_text("%s Wear %s -> %s." % [event.get("body", ""), event.get("wear_before", "?"), event.get("wear_after", "?")]))
+	return panel
+
 func _garage_status_panel() -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2338,6 +2534,21 @@ func _garage_status_panel() -> PanelContainer:
 	var last_message := str(_garage_state.get("last_message", ""))
 	if last_message != "":
 		stack.add_child(_body_text(last_message))
+
+	var recommendations := _service_recommendations()
+	if not recommendations.is_empty():
+		stack.add_child(_label("Service Recommendations", 14, Color.html("#111827")))
+		for item in recommendations.slice(0, min(recommendations.size(), 4)):
+			if typeof(item) == TYPE_DICTIONARY:
+				var recommendation: Dictionary = item
+				stack.add_child(_body_text("%s\n%s" % [recommendation.get("title", "Recommendation"), recommendation.get("body", "")]))
+
+	var failure_events: Array = _garage_state.get("failure_events", [])
+	if not failure_events.is_empty():
+		stack.add_child(_label("Recent Service Events", 14, Color.html("#111827")))
+		for item in failure_events.slice(maxi(failure_events.size() - 3, 0), failure_events.size()):
+			if typeof(item) == TYPE_DICTIONARY:
+				stack.add_child(_service_event_card(item))
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 8)
