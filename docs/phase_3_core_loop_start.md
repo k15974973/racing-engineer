@@ -90,6 +90,8 @@ Builder behavior:
 - Locked options render with `[LOCK]`, grey styling, and a tooltip.
 - Clicking a locked option is a no-op.
 - Unlocked options render normally.
+- Builder unlock checks bridge both active sources: canonical `GameData` par-time unlocks and the current progression prototype state.
+- A part is selectable when either source marks it open.
 
 Save behavior:
 
@@ -158,6 +160,14 @@ Power score was also reweighted toward horsepower and torque, with mass reduced 
 5. Reload unlock state and assert Ceramic remains unlocked.
 6. Force a Technical Loop result above par and assert Ceramic stays locked.
 
+`tests/phase_3_builder_unlock_bridge_smoke.gd` verifies the builder bridge:
+
+1. Reset canonical `GameData` unlocks so Ceramic is locked.
+2. Run a legal setup that satisfies the progression prototype `thermal_mastery` rule.
+3. Assert progression adds Ceramic to its material unlocks.
+4. Assert `GameData` still has Ceramic locked.
+5. Assert the builder treats Ceramic as selectable through the progression bridge.
+
 Current passing case:
 
 - Baseline: `v8/single_turbo/aluminum`
@@ -167,6 +177,7 @@ Current passing case:
 - Affinity check: `V8 NA -> power_ring`, `Inline-4 SC -> technical_loop`
 - Saved run compare: kept `Race 2`, `Race 3`, `Race 4`; best `Race 4`; best total `288.94`
 - Unlock progression: Power Ring `250.36 -> 232.83`, Technical Loop `307.39 -> 285.87`, one Ceramic unlock.
+- Builder unlock bridge: `v4/na/aluminum` on Technical Loop satisfies `thermal_mastery` and opens Ceramic through progression.
 
 ## Next Phase 3 Steps
 

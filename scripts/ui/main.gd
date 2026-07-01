@@ -1981,7 +1981,14 @@ func _unlock_type_for_builder_key(key: String) -> String:
 	return key
 
 func _builder_option_unlocked(key: String, record_id: String) -> bool:
-	return GameData.is_unlocked(_unlock_type_for_builder_key(key), record_id)
+	var part_type := _unlock_type_for_builder_key(key)
+	if GameData.is_unlocked(part_type, record_id):
+		return true
+
+	var collection_name := _builder_collection_name(key)
+	var prog_unlocked: Dictionary = _progression.get("unlocked", {})
+	var unlocked_ids: Array = prog_unlocked.get(collection_name, [])
+	return unlocked_ids.has(record_id)
 
 func _first_unlocked_builder_id(key: String, records: Array, fallback_id: String) -> String:
 	for item in records:

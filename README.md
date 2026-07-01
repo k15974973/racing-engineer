@@ -16,6 +16,7 @@ The project currently includes Phase 0, the canonical Phase 1 Engine Builder sli
 - Phase 2 Race Sim complete with two-track race flow, projected lap time, sector fit, interactive tactical windows, run overview, setup notes, best-run comparison, race timeline stepper, and pre-save risk preview.
 - Analysis screen with engine report card, track affinity, tactical review, structured rebuild instructions, and saved-run comparison from the latest race.
 - Phase 3 unlock data with par-time goals, locked builder cards, and persistent unlock state for Ceramic and Compound.
+- Builder unlock checks now bridge canonical par-time unlocks with the progression prototype unlock state.
 - Persistent race history with max-three saved runs per track, saved race loading, deletion, and best-run comparison in Analysis.
 - Persistent progression prototype with clean-race unlock metadata and debug visibility; Phase 1 Builder options stay open.
 - Persistent garage condition and economy layer with race payouts, repair costs, budget service, and performance penalties while damaged.
@@ -39,6 +40,7 @@ From the project root, run:
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_rebuild_instruction_smoke.gd'
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_saved_run_compare_smoke.gd'
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_unlock_progression_smoke.gd'
+& 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_builder_unlock_bridge_smoke.gd'
 ```
 
 ## Source Of Truth
