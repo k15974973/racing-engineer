@@ -7,6 +7,7 @@ const VIEW_ROADMAP := "roadmap"
 const VIEW_DEBUG := "debug"
 const SHOW_DEBUG_NAV := false
 const CurveChart := preload("res://scripts/ui/curve_chart.gd")
+const EngineVisualizer3D := preload("res://scripts/ui/engine_visualizer_3d.gd")
 const TEST_BENCH_DURATION := 30.0
 const SAVED_SETUPS_PATH := "user://saved_setups.json"
 const SAVED_SETUPS_VERSION := 1
@@ -2021,9 +2022,15 @@ func _refresh_builder_results() -> void:
 		_builder_results.remove_child(child)
 		child.queue_free()
 
+	_builder_results.add_child(_engine_visualizer_panel())
 	_builder_results.add_child(_builder_summary_panel())
 	_builder_results.add_child(_test_bench_preview_panel())
 	_builder_results.add_child(_setup_comparison_panel())
+
+func _engine_visualizer_panel() -> PanelContainer:
+	var visualizer := EngineVisualizer3D.new()
+	visualizer.set_setup(_current_setup())
+	return visualizer
 
 func _builder_collection_name(key: String) -> String:
 	match key:

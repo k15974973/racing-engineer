@@ -8,6 +8,7 @@ The project currently includes Phase 0, the canonical Phase 1 Engine Builder sli
 - `GameData` autoload for loading and validating data.
 - Interactive Engine Builder selection for block, induction, and material.
 - Prototype parameter tuning controls exist, but continuous tuning is deferred from canonical Phase 1 to Phase 5.
+- Local 3D engine visualizer in the builder. Compression, boost, fuel map, and induction choice reshape procedural chamber, intake, fuel rail, turbo/supercharger, pulley, crank, and piston visuals in real time.
 - Realtime power and torque curve visualization.
 - Projected setup stats for power, torque, mass, RPM range, heat, reliability, response, and push margin.
 - Engine health bar derived from block reliability, induction reliability, and material durability.
@@ -44,6 +45,8 @@ From the project root, run:
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_ui_clarity_smoke.gd'
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_default_guidance_smoke.gd'
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_layout_readability_smoke.gd'
+& 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_4_engine_visualizer_smoke.gd'
+& 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_4_engine_visualizer_render_smoke.gd'
 ```
 
 ## Source Of Truth
@@ -57,3 +60,5 @@ See `docs/implementation_source_of_truth.md` and `docs/phase_scope_audit.md`.
 Strict Part 1 / Phase 0 + Godot Scaffold is complete. Strict Phase 1 Engine Builder is implemented around the original 3-slot model: block x induction x material.
 
 Phase 2 Race Sim is complete for the canonical roadmap deliverable: end-to-end build, race, and result flow on two tracks. Phase 3 has started with structured Analysis rebuild instructions, an engine report card, track affinity, saved-run comparison, and par-time unlocks that point back to the builder slot that should change. Garage economy, repair, Hybrid slot condition, and service events remain running prototype systems for later phases or a possible roadmap extension.
+
+Before Phase 4 Online Async, the project is taking a local-first visualizer pass. The goal is to make the builder feel like a compact garage/inspection surface: changing engine parameters should visibly reshape the engine model before any online systems are added.
