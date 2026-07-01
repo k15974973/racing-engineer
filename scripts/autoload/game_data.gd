@@ -645,6 +645,180 @@ func _race_history_comparison(race_result: Dictionary, race_history: Array) -> D
 		"summary": summary
 	}
 
+func group_saved_runs_by_track(race_history: Array, limit: int = 3) -> Dictionary:
+	var grouped := {}
+	var trimmed := trim_saved_runs_all_tracks(race_history, limit)
+	for item in trimmed:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = item
+		var track_id := _saved_run_track_id(record)
+		if track_id == "":
+			continue
+
+		var records: Array = grouped.get(track_id, [])
+		records.append(record)
+		grouped[track_id] = records
+
+	return grouped
+
+func saved_runs_for_track(race_history: Array, track_id: String, limit: int = 3) -> Array:
+	var records: Array = []
+	if track_id == "":
+		return records
+
+	for item in race_history:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = item
+		if _saved_run_track_id(record) == track_id:
+			records.append(record)
+
+	if limit > 0 and records.size() > limit:
+		return records.slice(records.size() - limit, records.size())
+
+	return records
+
+func trim_saved_runs_all_tracks(race_history: Array, limit: int = 3) -> Array:
+	var result: Array = []
+	for item in race_history:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = item
+		result.append(record)
+		var track_id := _saved_run_track_id(record)
+		if track_id != "":
+			result = trim_saved_runs_for_track(result, track_id, limit)
+
+	return result
+
+func trim_saved_runs_for_track(race_history: Array, track_id: String, limit: int = 3) -> Array:
+	if track_id == "" or limit <= 0:
+		return race_history.duplicate(true)
+
+	var result := race_history.duplicate(true)
+	while _saved_run_count_for_track(result, track_id) > limit:
+		var remove_index := _first_saved_run_index_for_track(result, track_id)
+		if remove_index < 0:
+			break
+		result.remove_at(remove_index)
+
+	return result
+
+func build_saved_run_comparison(race_history: Array, track_id: String, limit: int = 3) -> Dictionary:
+	var records := saved_runs_for_track(race_history, track_id, limit)
+	if records.is_empty():
+		return {}
+
+	var best_index := _best_saved_run_index(records)
+	if best_index < 0:
+		return {}
+
+	var best_record: Dictionary = records[best_index]
+	var best_result: Dictionary = best_record.get("result", {})
+	var best_total := float(best_result.get("total_time", INF))
+	var best_scores := _saved_run_scores(best_result)
+	var runs: Array = []
+	for index in range(records.size()):
+		var record: Dictionary = records[index]
+		var result: Dictionary = record.get("result", {})
+		var scores := _saved_run_scores(result)
+		var total := float(result.get("total_time", 0.0))
+		var is_best := index == best_index
+		runs.append({
+			"name": str(record.get("name", "Race")),
+			"record": record,
+			"result": result,
+			"setup_summary": _saved_run_setup_summary(result),
+			"total_time": snappedf(total, 0.01),
+			"scores": scores,
+			"weakest_score": _weakest_saved_run_score(scores),
+			"is_best": is_best,
+			"deltas": {
+				"total_time": 0.0 if is_best else snappedf(total - best_total, 0.01),
+				"power": 0.0 if is_best else snappedf(float(best_scores.get("power", 0.0)) - float(scores.get("power", 0.0)), 0.1),
+				"technical": 0.0 if is_best else snappedf(float(best_scores.get("technical", 0.0)) - float(scores.get("technical", 0.0)), 0.1),
+				"endurance": 0.0 if is_best else snappedf(float(best_scores.get("endurance", 0.0)) - float(scores.get("endurance", 0.0)), 0.1)
+			}
+		})
+
+	return {
+		"track_id": track_id,
+		"count": runs.size(),
+		"best_index": best_index,
+		"best_name": str(best_record.get("name", "Race")),
+		"best_total_time": snappedf(best_total, 0.01),
+		"runs": runs
+	}
+
+func _saved_run_track_id(record: Dictionary) -> String:
+	var result: Dictionary = record.get("result", {})
+	var track: Dictionary = result.get("track", {})
+	return str(track.get("id", record.get("track_id", "")))
+
+func _saved_run_count_for_track(race_history: Array, track_id: String) -> int:
+	var count := 0
+	for item in race_history:
+		if typeof(item) == TYPE_DICTIONARY and _saved_run_track_id(item) == track_id:
+			count += 1
+	return count
+
+func _first_saved_run_index_for_track(race_history: Array, track_id: String) -> int:
+	for index in range(race_history.size()):
+		var item: Variant = race_history[index]
+		if typeof(item) == TYPE_DICTIONARY and _saved_run_track_id(item) == track_id:
+			return index
+	return -1
+
+func _best_saved_run_index(records: Array) -> int:
+	var best_index := -1
+	var best_total := INF
+	for index in range(records.size()):
+		if typeof(records[index]) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = records[index]
+		var result: Dictionary = record.get("result", {})
+		var total := float(result.get("total_time", INF))
+		if total <= 0.0 or total >= best_total:
+			continue
+
+		best_total = total
+		best_index = index
+
+	return best_index
+
+func _saved_run_scores(result: Dictionary) -> Dictionary:
+	return {
+		"power": snappedf(float(result.get("power_score", 0.0)), 0.1),
+		"technical": snappedf(float(result.get("technical_score", 0.0)), 0.1),
+		"endurance": snappedf(float(result.get("endurance_score", 0.0)), 0.1)
+	}
+
+func _weakest_saved_run_score(scores: Dictionary) -> String:
+	var weakest := "power"
+	var value := float(scores.get("power", 0.0))
+	for axis in ["technical", "endurance"]:
+		var score := float(scores.get(axis, 0.0))
+		if score < value:
+			value = score
+			weakest = axis
+	return weakest
+
+func _saved_run_setup_summary(result: Dictionary) -> String:
+	var setup: Dictionary = result.get("setup", {})
+	var block: Dictionary = setup.get("block", {})
+	var induction: Dictionary = setup.get("induction", {})
+	var material: Dictionary = setup.get("material", {})
+	return "%s / %s / %s" % [
+		block.get("name", "Block"),
+		induction.get("name", "Induction"),
+		material.get("name", "Material")
+	]
+
 func _build_race_sectors(power_score: float, technical_score: float, endurance_score: float, straight_bias: float, corner_bias: float, endurance_bias: float) -> Array:
 	return [
 		{

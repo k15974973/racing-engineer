@@ -36,6 +36,28 @@ Track affinity is calculated from existing track bias data:
 
 This uses `tracks.json` and does not hardcode Power Ring or Technical Loop, so Track 3/4 can be added later without changing the affinity logic.
 
+## Canonical Phase 3 Step 3
+
+Saved race comparison now keeps the latest three saved runs per track.
+
+Data behavior:
+
+- Persistent race history remains stored as a flat list for backward compatibility.
+- `GameData.group_saved_runs_by_track()` exposes the Phase 3 `saved_runs[track_id]` shape.
+- `GameData.trim_saved_runs_for_track()` applies FIFO when a fourth run is saved on the same track.
+- Existing history is normalized on load so old files cannot show more than three runs for one track.
+
+Comparison behavior:
+
+- Best run is the saved run with the lowest `total_time`.
+- Compare UI renders two or three saved runs side by side.
+- Each run shows setup summary, total time, and power/technical/endurance scores.
+- Best run shows `BEST` instead of deltas.
+- Non-best total delta uses `current.total_time - best.total_time`.
+- Score deltas use `best_score - current_score`, so positive means the compared run is weaker than best on that score.
+- The weakest score row in each run is marked in the compare card.
+- Timeline and tactical windows stay out of this compare view.
+
 ## Current Rule Set
 
 The first rule set intentionally uses existing Phase 2 data only:
@@ -79,6 +101,15 @@ Power score was also reweighted toward horsepower and torque, with mass reduced 
 6. Assert Inline-4 Supercharger favors Technical Loop through dot-product track affinity.
 7. Assert `report_card.weakest` matches the first rebuild instruction `target_field`.
 
+`tests/phase_3_saved_run_compare_smoke.gd` verifies saved-run comparison:
+
+1. Build four real race results on the same track.
+2. Save them in slow, slower, slower, fastest order.
+3. Assert FIFO keeps only the latest three runs.
+4. Assert best run is the lowest `total_time`.
+5. Assert total delta equals `current.total_time - best.total_time`.
+6. Assert older kept runs have positive slower deltas when the newest run is best.
+
 Current passing case:
 
 - Baseline: `v8/single_turbo/aluminum`
@@ -86,9 +117,9 @@ Current passing case:
 - Score gain: `+21.6 technical_score`
 - Lag check: `NA 78.4`, `Twin Turbo 71.3`
 - Affinity check: `V8 NA -> power_ring`, `Inline-4 SC -> technical_loop`
+- Saved run compare: kept `Race 2`, `Race 3`, `Race 4`; best `Race 4`; best total `288.94`
 
 ## Next Phase 3 Steps
 
-1. Save and compare two to three race versions side by side with delta highlights.
-2. Simple canonical progression unlock: win Technical Loop to unlock Ceramic material.
-3. Visual tutorial and playtest notes after the loop runs two rebuild cycles without outside explanation.
+1. Simple canonical progression unlock: win Technical Loop to unlock Ceramic material.
+2. Visual tutorial and playtest notes after the loop runs two rebuild cycles without outside explanation.

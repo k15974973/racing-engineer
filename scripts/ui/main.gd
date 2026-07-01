@@ -21,6 +21,7 @@ const GARAGE_REPAIR_COST_PER_DAMAGE := 42
 const GARAGE_BUDGET_REPAIR_CREDITS := 650
 const GARAGE_PART_KEYS := ["block", "induction", "material"]
 const COMPARISON_LIMIT := 3
+const SAVED_RUN_LIMIT_PER_TRACK := 3
 const COMPARISON_COLORS := ["#534AB7", "#0F6E56", "#B45309"]
 const PROGRESSION_STARTER_UNLOCKS := {
 	"blocks": ["v4", "v6", "inline_4"],
@@ -1714,6 +1715,7 @@ func _save_current_race() -> void:
 		"garage_damage": damage_report.duplicate(true),
 		"garage_reward": reward_report.duplicate(true)
 	})
+	_race_history = GameData.trim_saved_runs_for_track(_race_history, _race_track_id, SAVED_RUN_LIMIT_PER_TRACK)
 	_write_race_history()
 	_show_view(VIEW_RACE_SIM)
 
@@ -1775,7 +1777,28 @@ func _load_race_history() -> void:
 
 		_race_history.append(record)
 
-	_race_history_counter = max(_race_history_counter, _race_history.size() + 1)
+	var history_size := _race_history.size()
+	_race_history = GameData.trim_saved_runs_all_tracks(_race_history, SAVED_RUN_LIMIT_PER_TRACK)
+	_race_history_counter = max(_race_history_counter, _next_race_history_counter())
+	if _race_history.size() != history_size:
+		_write_race_history()
+
+func _next_race_history_counter() -> int:
+	var next_counter := _race_history.size() + 1
+	for item in _race_history:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = item
+		var name := str(record.get("name", ""))
+		if not name.begins_with("Race "):
+			continue
+
+		var number := int(name.substr(5))
+		if number >= next_counter:
+			next_counter = number + 1
+
+	return max(1, next_counter)
 
 func _write_race_history() -> void:
 	var records: Array = []
@@ -2235,6 +2258,7 @@ func _race_result_panel() -> PanelContainer:
 		stack.add_child(_status("Progression: %s" % _join_strings(_last_unlocks, " | "), true))
 	stack.add_child(_race_overview_panel(_race_result))
 	stack.add_child(_race_best_comparison_panel(_race_result))
+	stack.add_child(_saved_run_compare_panel(str(track.get("id", ""))))
 
 	var save_preview: Dictionary = _race_result.get("save_preview", {})
 	if not save_preview.is_empty():
@@ -2370,6 +2394,120 @@ func _race_best_comparison_panel(race_result: Dictionary) -> PanelContainer:
 	stack.add_child(_metric_row("Delta", "%+0.2fs" % delta))
 	stack.add_child(_status("Current run is faster than saved best." if delta < -0.01 else "Saved best is still faster or tied.", delta < -0.01))
 	return panel
+
+func _saved_run_compare_panel(track_id: String) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 8)
+	margin.add_child(stack)
+
+	var track := GameData.get_record_by_id("tracks", track_id)
+	stack.add_child(_label("Saved Run Compare", 16, Color.html("#111827")))
+	if not track.is_empty():
+		stack.add_child(_body_text("%s keeps the latest %d saved runs for comparison." % [track.get("name", "Track"), SAVED_RUN_LIMIT_PER_TRACK]))
+
+	var comparison := GameData.build_saved_run_comparison(_race_history, track_id, SAVED_RUN_LIMIT_PER_TRACK)
+	var runs: Array = comparison.get("runs", [])
+	if runs.size() < 2:
+		stack.add_child(_body_text("Save at least two runs on this track to compare setup versions."))
+		return panel
+
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 10)
+	stack.add_child(row)
+
+	for item in runs:
+		if typeof(item) == TYPE_DICTIONARY:
+			row.add_child(_saved_run_compare_card(item))
+
+	return panel
+
+func _saved_run_compare_card(run: Dictionary) -> PanelContainer:
+	var is_best := bool(run.get("is_best", false))
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(230, 0)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#0F6E56") if is_best else Color.html("#E5E7EB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 6)
+	margin.add_child(stack)
+
+	stack.add_child(_label(str(run.get("name", "Race")), 14, Color.html("#111827")))
+	stack.add_child(_body_text(str(run.get("setup_summary", ""))))
+	if is_best:
+		stack.add_child(_status("BEST", true))
+
+	var deltas: Dictionary = run.get("deltas", {})
+	var scores: Dictionary = run.get("scores", {})
+	var weakest := str(run.get("weakest_score", ""))
+	stack.add_child(_compare_value_row("Total", "%ss" % run.get("total_time", "?"), float(deltas.get("total_time", 0.0)), "s", not is_best, false))
+	stack.add_child(_compare_value_row("Power", str(scores.get("power", "?")), float(deltas.get("power", 0.0)), "", not is_best, weakest == "power"))
+	stack.add_child(_compare_value_row("Technical", str(scores.get("technical", "?")), float(deltas.get("technical", 0.0)), "", not is_best, weakest == "technical"))
+	stack.add_child(_compare_value_row("Endurance", str(scores.get("endurance", "?")), float(deltas.get("endurance", 0.0)), "", not is_best, weakest == "endurance"))
+	return panel
+
+func _compare_value_row(name: String, value: String, delta: float, suffix: String, show_delta: bool, highlight: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	var label_text := "%s*" % name if highlight else name
+	var label := _label(label_text, 13, Color.html("#92400E") if highlight else Color.html("#374151"))
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+
+	var amount := _label(value, 13, Color.html("#92400E") if highlight else Color.html("#111827"))
+	amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(amount)
+
+	if show_delta:
+		var delta_label := _compare_delta_label(delta, suffix)
+		row.add_child(delta_label)
+	if highlight:
+		var panel := PanelContainer.new()
+		panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFF7ED"), Color.html("#FED7AA")))
+
+		var margin := MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 6)
+		margin.add_theme_constant_override("margin_top", 3)
+		margin.add_theme_constant_override("margin_right", 6)
+		margin.add_theme_constant_override("margin_bottom", 3)
+		panel.add_child(margin)
+		margin.add_child(row)
+		return panel
+
+	return row
+
+func _compare_delta_label(delta: float, suffix: String) -> Label:
+	var text := "%+0.2f%s" % [delta, suffix] if suffix == "s" else "%+0.1f" % delta
+	var color := Color.html("#374151")
+	if delta > 0.01:
+		color = Color.html("#9F1239")
+	elif delta < -0.01:
+		color = Color.html("#065F46")
+
+	var label := _label(text, 12, color)
+	label.custom_minimum_size = Vector2(64, 0)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	return label
 
 func _race_setup_notes_panel(race_result: Dictionary) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -2783,6 +2921,7 @@ func _render_analysis(layout: VBoxContainer) -> void:
 	right.add_child(_analysis_suggestions_panel(analysis))
 	right.add_child(_progression_panel())
 	right.add_child(_garage_status_panel())
+	right.add_child(_saved_run_compare_panel(str(_race_result.get("track", {}).get("id", ""))))
 	right.add_child(_analysis_history_comparison_panel(analysis))
 	right.add_child(_analysis_decisions_panel(_race_result))
 

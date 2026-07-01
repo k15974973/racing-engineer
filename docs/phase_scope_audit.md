@@ -73,6 +73,7 @@ Implemented as canonical Phase 3 start:
 - `target_field` guidance back to the 3-slot builder.
 - Engine report card with power, technical, and endurance bars.
 - Dot-product track affinity using `tracks.json` bias fields.
+- Saved-run comparison with max three runs per track and FIFO trimming.
 - Rebuild instruction smoke test that races again and verifies the related score improves.
 
 Implemented as future-phase prototype:
