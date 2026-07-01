@@ -41,6 +41,7 @@ From the project root, run:
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_saved_run_compare_smoke.gd'
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_unlock_progression_smoke.gd'
 & 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_builder_unlock_bridge_smoke.gd'
+& 'D:\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe' --headless --path . --script 'res://tests/phase_3_ui_clarity_smoke.gd'
 ```
 
 ## Source Of Truth

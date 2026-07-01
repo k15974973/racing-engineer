@@ -182,22 +182,21 @@ func _build_shell() -> void:
 	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
 
-	var header := VBoxContainer.new()
-	header.add_theme_constant_override("separation", 2)
-	root.add_child(header)
-
-	header.add_child(_label("Racing Engineer", 24, Color.html("#111827")))
-	header.add_child(_body_text("Engine Builder prototype with future-phase race, analysis, and garage systems clearly separated in docs."))
-
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 8)
 	root.add_child(nav)
 
-	_add_nav_button(nav, VIEW_ENGINE_BUILDER, "Engine Builder")
+	_add_nav_button(nav, VIEW_ENGINE_BUILDER, "Build Engine")
 	_add_nav_button(nav, VIEW_RACE_SIM, "Race Sim")
 	_add_nav_button(nav, VIEW_ANALYSIS, "Analysis")
 	_add_nav_button(nav, VIEW_ROADMAP, "Roadmap")
 	_add_nav_button(nav, VIEW_DEBUG, "Data Smoke Test")
+
+	var header := VBoxContainer.new()
+	header.add_theme_constant_override("separation", 2)
+	root.add_child(header)
+
+	header.add_child(_label("Racing Engineer", 18, Color.html("#111827")))
 
 	_content = PanelContainer.new()
 	_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -210,8 +209,38 @@ func _add_nav_button(nav: HBoxContainer, view_id: String, text: String) -> void:
 	button.toggle_mode = true
 	button.focus_mode = Control.FOCUS_NONE
 	button.pressed.connect(_show_view.bind(view_id))
+	_style_nav_button(button, view_id == VIEW_ENGINE_BUILDER)
 	nav.add_child(button)
 	_nav_buttons[view_id] = button
+
+func _style_nav_button(button: Button, primary: bool) -> void:
+	button.custom_minimum_size = Vector2(190, 44) if primary else Vector2(108, 36)
+	button.add_theme_font_size_override("font_size", 16 if primary else 12)
+	if primary:
+		button.add_theme_stylebox_override("normal", _panel_style(Color.html("#111827"), Color.html("#111827"), 2))
+		button.add_theme_stylebox_override("hover", _panel_style(Color.html("#1F2937"), Color.html("#534AB7"), 2))
+		button.add_theme_stylebox_override("pressed", _panel_style(Color.html("#534AB7"), Color.html("#111827"), 2))
+		button.add_theme_color_override("font_color", Color.html("#FFFFFF"))
+		button.add_theme_color_override("font_hover_color", Color.html("#FFFFFF"))
+		button.add_theme_color_override("font_pressed_color", Color.html("#FFFFFF"))
+	else:
+		button.add_theme_stylebox_override("normal", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
+		button.add_theme_stylebox_override("hover", _panel_style(Color.html("#EEF2FF"), Color.html("#534AB7")))
+		button.add_theme_stylebox_override("pressed", _panel_style(Color.html("#E0E7FF"), Color.html("#534AB7")))
+		button.add_theme_color_override("font_color", Color.html("#374151"))
+		button.add_theme_color_override("font_hover_color", Color.html("#111827"))
+		button.add_theme_color_override("font_pressed_color", Color.html("#111827"))
+
+func _style_primary_action_button(button: Button) -> void:
+	button.custom_minimum_size = Vector2(160, 42)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.add_theme_font_size_override("font_size", 16)
+	button.add_theme_stylebox_override("normal", _panel_style(Color.html("#534AB7"), Color.html("#111827"), 2))
+	button.add_theme_stylebox_override("hover", _panel_style(Color.html("#4338CA"), Color.html("#111827"), 2))
+	button.add_theme_stylebox_override("pressed", _panel_style(Color.html("#312E81"), Color.html("#111827"), 2))
+	button.add_theme_color_override("font_color", Color.html("#FFFFFF"))
+	button.add_theme_color_override("font_hover_color", Color.html("#FFFFFF"))
+	button.add_theme_color_override("font_pressed_color", Color.html("#FFFFFF"))
 
 func _show_view(view_id: String) -> void:
 	_current_view = view_id
@@ -352,7 +381,11 @@ func _builder_choice_panel(title: String, records: Array, key: String) -> PanelC
 	stack.add_theme_constant_override("separation", 8)
 	margin.add_child(stack)
 
-	stack.add_child(_label(title, 16, Color.html("#111827")))
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	stack.add_child(header_row)
+	header_row.add_child(_label(_builder_step_prefix(key), 12, Color.html("#534AB7")))
+	header_row.add_child(_label(title, 16, Color.html("#111827")))
 
 	var choices := GridContainer.new()
 	choices.columns = 2
@@ -396,6 +429,17 @@ func _slot_choice_button(text: String, record_id: String, key: String, selected:
 	button.add_theme_color_override("font_hover_color", Color.html("#6B7280") if locked else (Color.html("#FFFFFF") if selected else Color.html("#111827")))
 	button.add_theme_color_override("font_disabled_color", Color.html("#6B7280"))
 	return button
+
+func _builder_step_prefix(key: String) -> String:
+	match key:
+		"block":
+			return "1 ->"
+		"induction":
+			return "2 ->"
+		"material":
+			return "3"
+		_:
+			return ""
 
 func _selected_slot_panel(key: String, record: Dictionary) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -2406,6 +2450,12 @@ func _race_result_panel() -> PanelContainer:
 	actions.add_theme_constant_override("separation", 8)
 	stack.add_child(actions)
 
+	var analyze_button := Button.new()
+	analyze_button.text = "Analyze"
+	analyze_button.pressed.connect(_show_view.bind(VIEW_ANALYSIS))
+	_style_primary_action_button(analyze_button)
+	actions.add_child(analyze_button)
+
 	var save_button := Button.new()
 	save_button.text = "Save Copy" if _race_committed else "Save Race"
 	save_button.pressed.connect(_save_current_race)
@@ -3559,14 +3609,14 @@ func _label(text: String, size: int, color: Color) -> Label:
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return label
 
-func _panel_style(background: Color, border: Color) -> StyleBoxFlat:
+func _panel_style(background: Color, border: Color, border_width: int = 1) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = background
 	style.border_color = border
-	style.border_width_left = 1
-	style.border_width_top = 1
-	style.border_width_right = 1
-	style.border_width_bottom = 1
+	style.border_width_left = border_width
+	style.border_width_top = border_width
+	style.border_width_right = border_width
+	style.border_width_bottom = border_width
 	style.corner_radius_top_left = 8
 	style.corner_radius_top_right = 8
 	style.corner_radius_bottom_left = 8
