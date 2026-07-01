@@ -6,7 +6,7 @@ Phase 0 is complete: design docs, data matrix, tactical window spec, Godot scaff
 
 Phase 1 is complete for the canonical builder scope: block x induction x material, readable selector output, curve differentiation, curve physics consistency, engine health, test bench, saved setup workflow, and smoke tests. Continuous parameter tuning remains prototype-only and is deferred to Phase 5.
 
-Phase 2 is now active. The current slice turns the earlier Race Sim prototype into a more testable canonical race layer.
+Phase 2 is complete for the canonical roadmap deliverable. The current slice turns the earlier Race Sim prototype into a testable race layer with end-to-end build, race, and result flow on two tracks.
 
 ## Phase 2 Additions
 
@@ -102,6 +102,7 @@ Phase 2 is now active. The current slice turns the earlier Race Sim prototype in
 - boosted setups producing Boost Spike windows,
 - technical tracks producing Corner Map windows,
 - invalid track ids returning a clear `tracks.json` error.
+- Phase 2 acceptance across Power Ring and Technical Loop.
 
 ## Important Design Choices
 
@@ -121,8 +122,9 @@ Heat penalty was tuned so a cool setup can gain time by pushing, while hot or fr
 - No physical parts model such as pistons, ECU, radiator, or individual turbo wear.
 - No canonical continuous tuning until Phase 5.
 
-## Next Recommended Phase 2 Work
+## Next Recommended Work
 
-- Add simple comparison filters for saved runs on the same track.
-- Add a compact saved-run inspector for race history cards.
-- Add one more track only after the two current tracks keep producing distinct tactical decisions.
+- Move into Phase 3 Core Loop using the validated race result objects.
+- Make Analysis produce a sharper rebuild instruction from race data.
+- Add comparison filters or saved-run inspector only when they directly support the Phase 3 learning loop.
+- Add one more track only after the two current tracks keep producing distinct tactical decisions through Phase 3 testing.
