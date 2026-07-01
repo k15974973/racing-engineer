@@ -67,9 +67,14 @@ Implemented as canonical Phase 2 start:
 - Track contract validation.
 - Race result smoke tests.
 
+Implemented as canonical Phase 3 start:
+
+- Structured rebuild instructions from race data.
+- `target_field` guidance back to the 3-slot builder.
+- Rebuild instruction smoke test that races again and verifies the related score improves.
+
 Implemented as future-phase prototype:
 
-- Analysis report.
 - Race history.
 - Progression unlocks.
 - Garage damage and repair.

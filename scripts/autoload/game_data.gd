@@ -255,9 +255,11 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 	var corner_bias := float(track.get("corner_bias", 0.4))
 	var endurance_bias := float(track.get("endurance_bias", 0.2))
 	var bias_total := maxf(straight_bias + corner_bias + endurance_bias, 0.01)
+	var induction_lag := float(setup.get("induction", {}).get("lag", 0.0))
+	var corner_lag_penalty := induction_lag * corner_bias * 50.0
 
 	var power_score := clampf((power / 430.0) * 55.0 + (torque / 520.0) * 25.0 + (155.0 / mass) * 20.0, 20.0, 130.0)
-	var technical_score := clampf((response / 105.0) * 45.0 + (torque / 470.0) * 25.0 + (155.0 / mass) * 30.0, 20.0, 130.0)
+	var technical_score := clampf((response / 105.0) * 45.0 + (torque / 470.0) * 25.0 + (155.0 / mass) * 30.0 - corner_lag_penalty, 20.0, 130.0)
 	var endurance_score := clampf((effective_reliability / 105.0) * 55.0 + (push_margin / 105.0) * 35.0 + ((145.0 - effective_heat) / 80.0) * 10.0, 10.0, 130.0)
 	var fit_score := (power_score * straight_bias + technical_score * corner_bias + endurance_score * endurance_bias) / bias_total
 
@@ -312,6 +314,7 @@ func analyze_race_result(race_result: Dictionary, race_history: Array = []) -> D
 	var power_score := float(race_result.get("power_score", 0.0))
 	var technical_score := float(race_result.get("technical_score", 0.0))
 	var endurance_score := float(race_result.get("endurance_score", 0.0))
+	var rebuild_instructions := _build_rebuild_instructions(race_result)
 
 	findings.append({
 		"title": "Lap delta",
@@ -366,6 +369,10 @@ func analyze_race_result(race_result: Dictionary, race_history: Array = []) -> D
 		})
 		suggestions.append("Back off repeated push decisions or improve durability before longer races.")
 
+	for instruction in rebuild_instructions:
+		if typeof(instruction) == TYPE_DICTIONARY:
+			suggestions.append(str(instruction.get("direction", "")))
+
 	var effects: Dictionary = race_result.get("decision_effects", {})
 	var decision_log: Array = effects.get("log", [])
 	for decision in decision_log:
@@ -401,6 +408,7 @@ func analyze_race_result(race_result: Dictionary, race_history: Array = []) -> D
 		"setup": setup,
 		"findings": findings,
 		"suggestions": _dedupe_strings(suggestions),
+		"rebuild_instructions": rebuild_instructions,
 		"comparison": comparison,
 		"scorecard": {
 			"track_fit": snappedf(score, 0.1),
@@ -412,6 +420,91 @@ func analyze_race_result(race_result: Dictionary, race_history: Array = []) -> D
 			"lap_delta": snappedf(delta, 0.01)
 		}
 	}
+
+func _build_rebuild_instructions(race_result: Dictionary) -> Array:
+	var candidates: Array = []
+	var setup: Dictionary = race_result.get("setup", {})
+	var track: Dictionary = race_result.get("track", {})
+	var track_id := str(track.get("id", ""))
+	var technical_score := float(race_result.get("technical_score", 0.0))
+	var power_score := float(race_result.get("power_score", 0.0))
+	var endurance_score := float(race_result.get("endurance_score", 0.0))
+	var heat := float(race_result.get("effective_heat", setup.get("heat_score", 100.0)))
+	var heat_ratio := heat if heat <= 1.5 else heat / 180.0
+
+	if technical_score < 60.0 and _race_result_has_window_type(race_result, "Corner Map"):
+		candidates.append(_rebuild_instruction(
+			"Corner exit lag",
+			"Induction lag is costing time in corners. Try NA or Supercharger instead of a high-lag turbo.",
+			"induction",
+			technical_score,
+			"technical_score %0.1f with Corner Map pressure." % technical_score
+		))
+
+	if heat_ratio > 0.85 and endurance_score < 50.0:
+		candidates.append(_rebuild_instruction(
+			"Thermal endurance risk",
+			"Setup is running too hot. Change material toward Titanium or Ceramic before pushing longer races.",
+			"material",
+			endurance_score,
+			"effective_heat %0.1f and endurance_score %0.1f." % [heat, endurance_score]
+		))
+
+	if power_score < 50.0 and track_id == "power_ring":
+		candidates.append(_rebuild_instruction(
+			"Top-end power deficit",
+			"Block is short on top-end power for Power Ring. Try V8 or V6 before chasing tactics.",
+			"block",
+			power_score,
+			"power_score %0.1f on Power Ring." % power_score
+		))
+
+	return _take_worst_rebuild_instructions(candidates, 2)
+
+func _rebuild_instruction(issue: String, direction: String, target_field: String, priority_score: float, evidence: String) -> Dictionary:
+	return {
+		"issue": issue,
+		"direction": direction,
+		"target_field": target_field,
+		"related_score": snappedf(priority_score, 0.1),
+		"evidence": evidence,
+		"_priority_score": priority_score
+	}
+
+func _take_worst_rebuild_instructions(candidates: Array, limit: int) -> Array:
+	var remaining := candidates.duplicate(true)
+	var result: Array = []
+	var seen_targets := {}
+	while result.size() < limit and not remaining.is_empty():
+		var worst_index := 0
+		for index in range(1, remaining.size()):
+			var current: Dictionary = remaining[index]
+			var worst: Dictionary = remaining[worst_index]
+			if float(current.get("_priority_score", 999.0)) < float(worst.get("_priority_score", 999.0)):
+				worst_index = index
+
+		var instruction: Dictionary = remaining[worst_index]
+		remaining.remove_at(worst_index)
+		var target := str(instruction.get("target_field", ""))
+		if target == "" or seen_targets.has(target):
+			continue
+
+		seen_targets[target] = true
+		instruction.erase("_priority_score")
+		result.append(instruction)
+
+	return result
+
+func _race_result_has_window_type(race_result: Dictionary, window_type: String) -> bool:
+	for item in race_result.get("windows", []):
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var window: Dictionary = item
+		if str(window.get("type", "")) == window_type:
+			return true
+
+	return false
 
 func _race_history_comparison(race_result: Dictionary, race_history: Array) -> Dictionary:
 	var track: Dictionary = race_result.get("track", {})

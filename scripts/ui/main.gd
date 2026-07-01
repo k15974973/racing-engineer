@@ -2900,8 +2900,38 @@ func _analysis_suggestions_panel(analysis: Dictionary) -> PanelContainer:
 	stack.add_theme_constant_override("separation", 8)
 	margin.add_child(stack)
 	stack.add_child(_label("Rebuild Direction", 16, Color.html("#111827")))
+	var instructions: Array = analysis.get("rebuild_instructions", [])
+	if not instructions.is_empty():
+		for item in instructions:
+			if typeof(item) == TYPE_DICTIONARY:
+				stack.add_child(_analysis_instruction_card(item))
+		return panel
+
 	for suggestion in analysis.get("suggestions", []):
 		stack.add_child(_body_text("- %s" % suggestion))
+	return panel
+
+func _analysis_instruction_card(instruction: Dictionary) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 5)
+	margin.add_child(stack)
+
+	var target := str(instruction.get("target_field", "setup")).capitalize()
+	stack.add_child(_label("%s - %s" % [target, instruction.get("issue", "Rebuild")], 14, Color.html("#111827")))
+	stack.add_child(_body_text(str(instruction.get("direction", ""))))
+	var evidence := str(instruction.get("evidence", ""))
+	if evidence != "":
+		stack.add_child(_body_text("Evidence: %s" % evidence))
 	return panel
 
 func _analysis_history_comparison_panel(analysis: Dictionary) -> PanelContainer:
