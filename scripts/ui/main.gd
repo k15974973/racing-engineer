@@ -2813,6 +2813,9 @@ func _analysis_header_panel(analysis: Dictionary) -> PanelContainer:
 
 func _analysis_scorecard_panel(analysis: Dictionary) -> PanelContainer:
 	var scorecard: Dictionary = analysis.get("scorecard", {})
+	var report_card: Dictionary = analysis.get("report_card", {})
+	var report_scores: Dictionary = report_card.get("scores", {})
+	var affinity: Dictionary = report_card.get("track_affinity", {})
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#F9FAFB"), Color.html("#E5E7EB")))
 
@@ -2826,15 +2829,46 @@ func _analysis_scorecard_panel(analysis: Dictionary) -> PanelContainer:
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 8)
 	margin.add_child(stack)
-	stack.add_child(_label("Scorecard", 16, Color.html("#111827")))
+	stack.add_child(_label("Engine Report Card", 16, Color.html("#111827")))
+	stack.add_child(_analysis_report_bar("Power", float(report_scores.get("power", scorecard.get("power", 0.0)))))
+	stack.add_child(_analysis_report_bar("Technical", float(report_scores.get("technical", scorecard.get("technical", 0.0)))))
+	stack.add_child(_analysis_report_bar("Endurance", float(report_scores.get("endurance", scorecard.get("endurance", 0.0)))))
+
+	var best_fit_id := str(affinity.get("best_fit", ""))
+	var best_fit_name := best_fit_id
+	var best_track: Dictionary = GameData.get_record_by_id("tracks", best_fit_id)
+	if not best_track.is_empty():
+		best_fit_name = str(best_track.get("name", best_fit_id))
+
+	var reason := str(affinity.get("reason", ""))
+	if best_fit_id != "":
+		stack.add_child(_body_text("Best fit: %s. %s" % [best_fit_name, reason]))
+
+	stack.add_child(_metric_row("Weakest slot", str(report_card.get("weakest", "setup")).capitalize()))
 	stack.add_child(_metric_row("Lap delta", "%+0.2fs" % float(scorecard.get("lap_delta", 0.0))))
-	stack.add_child(_meter_row("Track fit", float(scorecard.get("track_fit", 0.0)), 130.0, true))
-	stack.add_child(_meter_row("Power", float(scorecard.get("power", 0.0)), 130.0, true))
-	stack.add_child(_meter_row("Technical", float(scorecard.get("technical", 0.0)), 130.0, true))
-	stack.add_child(_meter_row("Endurance", float(scorecard.get("endurance", 0.0)), 130.0, true))
 	stack.add_child(_metric_row("Final heat", "%s / 180" % scorecard.get("heat", "?")))
 	stack.add_child(_metric_row("Final reliability", "%s / 120" % scorecard.get("reliability", "?")))
 	return panel
+
+func _analysis_report_bar(name: String, value: float) -> VBoxContainer:
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 4)
+
+	stack.add_child(_body_text(name))
+
+	var bar := ProgressBar.new()
+	bar.max_value = 100.0
+	bar.value = clampf(value, 0.0, 100.0)
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 10)
+	var fill := Color.html("#0F6E56")
+	if value < 45.0:
+		fill = Color.html("#9F1239")
+	elif value < 70.0:
+		fill = Color.html("#B45309")
+	bar.add_theme_stylebox_override("fill", _panel_style(fill, fill))
+	stack.add_child(bar)
+	return stack
 
 func _analysis_findings_panel(analysis: Dictionary) -> PanelContainer:
 	var panel := PanelContainer.new()

@@ -71,6 +71,8 @@ Implemented as canonical Phase 3 start:
 
 - Structured rebuild instructions from race data.
 - `target_field` guidance back to the 3-slot builder.
+- Engine report card with power, technical, and endurance bars.
+- Dot-product track affinity using `tracks.json` bias fields.
 - Rebuild instruction smoke test that races again and verifies the related score improves.
 
 Implemented as future-phase prototype:

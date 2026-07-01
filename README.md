@@ -2,7 +2,7 @@
 
 Mechanics-first Godot 4 scaffold for the Racing Engineer roadmap.
 
-The project currently includes Phase 0, the canonical Phase 1 Engine Builder slice, the canonical Phase 2 Race Sim slice, the first canonical Phase 3 Analysis rebuild instruction, and future-phase vertical prototype systems:
+The project currently includes Phase 0, the canonical Phase 1 Engine Builder slice, the canonical Phase 2 Race Sim slice, the first canonical Phase 3 Analysis loop, and future-phase vertical prototype systems:
 
 - Structured engine data for blocks, induction systems, and materials.
 - `GameData` autoload for loading and validating data.
@@ -14,7 +14,7 @@ The project currently includes Phase 0, the canonical Phase 1 Engine Builder sli
 - Timed 30-second test bench with RPM, boost, heat, reliability, and warning telemetry.
 - Persistent named setup saving, loading, deleting, and side-by-side comparison.
 - Phase 2 Race Sim complete with two-track race flow, projected lap time, sector fit, interactive tactical windows, run overview, setup notes, best-run comparison, race timeline stepper, and pre-save risk preview.
-- Analysis screen with scorecard, findings, tactical review, and structured rebuild instructions from the latest race.
+- Analysis screen with engine report card, track affinity, tactical review, and structured rebuild instructions from the latest race.
 - Persistent race history with saved race loading, deletion, and best-run comparison in Analysis.
 - Persistent progression prototype with clean-race unlock metadata and debug visibility; Phase 1 Builder options stay open.
 - Persistent garage condition and economy layer with race payouts, repair costs, budget service, and performance penalties while damaged.
@@ -48,4 +48,4 @@ See `docs/implementation_source_of_truth.md` and `docs/phase_scope_audit.md`.
 
 Strict Part 1 / Phase 0 + Godot Scaffold is complete. Strict Phase 1 Engine Builder is implemented around the original 3-slot model: block x induction x material.
 
-Phase 2 Race Sim is complete for the canonical roadmap deliverable: end-to-end build, race, and result flow on two tracks. Phase 3 has started with structured Analysis rebuild instructions that point back to the builder slot that should change. Race history, progression unlocks, garage economy, repair, Hybrid slot condition, and service events remain running prototype systems for later phases or a possible roadmap extension.
+Phase 2 Race Sim is complete for the canonical roadmap deliverable: end-to-end build, race, and result flow on two tracks. Phase 3 has started with structured Analysis rebuild instructions, an engine report card, and track affinity that point back to the builder slot that should change. Race history, progression unlocks, garage economy, repair, Hybrid slot condition, and service events remain running prototype systems for later phases or a possible roadmap extension.

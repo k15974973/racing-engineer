@@ -258,7 +258,7 @@ func calculate_race_result(setup: Dictionary, track_id: String, decisions: Dicti
 	var induction_lag := float(setup.get("induction", {}).get("lag", 0.0))
 	var corner_lag_penalty := induction_lag * corner_bias * 50.0
 
-	var power_score := clampf((power / 430.0) * 55.0 + (torque / 520.0) * 25.0 + (155.0 / mass) * 20.0, 20.0, 130.0)
+	var power_score := clampf((power / 430.0) * 70.0 + (torque / 520.0) * 28.0 + (155.0 / mass) * 6.0, 20.0, 130.0)
 	var technical_score := clampf((response / 105.0) * 45.0 + (torque / 470.0) * 25.0 + (155.0 / mass) * 30.0 - corner_lag_penalty, 20.0, 130.0)
 	var endurance_score := clampf((effective_reliability / 105.0) * 55.0 + (push_margin / 105.0) * 35.0 + ((145.0 - effective_heat) / 80.0) * 10.0, 10.0, 130.0)
 	var fit_score := (power_score * straight_bias + technical_score * corner_bias + endurance_score * endurance_bias) / bias_total
@@ -315,6 +315,7 @@ func analyze_race_result(race_result: Dictionary, race_history: Array = []) -> D
 	var technical_score := float(race_result.get("technical_score", 0.0))
 	var endurance_score := float(race_result.get("endurance_score", 0.0))
 	var rebuild_instructions := _build_rebuild_instructions(race_result)
+	var report_card := _build_engine_report_card(race_result, rebuild_instructions)
 
 	findings.append({
 		"title": "Lap delta",
@@ -409,6 +410,7 @@ func analyze_race_result(race_result: Dictionary, race_history: Array = []) -> D
 		"findings": findings,
 		"suggestions": _dedupe_strings(suggestions),
 		"rebuild_instructions": rebuild_instructions,
+		"report_card": report_card,
 		"comparison": comparison,
 		"scorecard": {
 			"track_fit": snappedf(score, 0.1),
@@ -420,6 +422,107 @@ func analyze_race_result(race_result: Dictionary, race_history: Array = []) -> D
 			"lap_delta": snappedf(delta, 0.01)
 		}
 	}
+
+func _build_engine_report_card(race_result: Dictionary, rebuild_instructions: Array) -> Dictionary:
+	var scores := {
+		"power": _report_score(float(race_result.get("power_score", 0.0))),
+		"technical": _report_score(float(race_result.get("technical_score", 0.0))),
+		"endurance": _report_score(float(race_result.get("endurance_score", 0.0)))
+	}
+	var weakest := _weakest_report_target(scores)
+	if not rebuild_instructions.is_empty() and typeof(rebuild_instructions[0]) == TYPE_DICTIONARY:
+		var first_instruction: Dictionary = rebuild_instructions[0]
+		var target := str(first_instruction.get("target_field", ""))
+		if target != "":
+			weakest = target
+
+	return {
+		"scores": scores,
+		"weakest": weakest,
+		"track_affinity": _track_affinity(scores)
+	}
+
+func _report_score(value: float) -> float:
+	return snappedf(clampf(value, 0.0, 100.0), 0.1)
+
+func _weakest_report_target(scores: Dictionary) -> String:
+	var lowest_axis := "power"
+	var lowest_score := float(scores.get("power", 0.0))
+	for axis in ["technical", "endurance"]:
+		var score := float(scores.get(axis, 0.0))
+		if score < lowest_score:
+			lowest_score = score
+			lowest_axis = axis
+
+	return _score_axis_target_field(lowest_axis)
+
+func _score_axis_target_field(axis: String) -> String:
+	match axis:
+		"technical":
+			return "induction"
+		"endurance":
+			return "material"
+		_:
+			return "block"
+
+func _track_affinity(scores: Dictionary) -> Dictionary:
+	var best_track: Dictionary = {}
+	var best_fit := ""
+	var best_score := -INF
+	for item in tracks:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var track: Dictionary = item
+		var affinity := float(scores.get("power", 0.0)) * float(track.get("straight_bias", 0.0))
+		affinity += float(scores.get("technical", 0.0)) * float(track.get("corner_bias", 0.0))
+		affinity += float(scores.get("endurance", 0.0)) * float(track.get("endurance_bias", 0.0))
+		if affinity > best_score:
+			best_score = affinity
+			best_fit = str(track.get("id", ""))
+			best_track = track
+
+	return {
+		"best_fit": best_fit,
+		"score": snappedf(best_score, 0.1),
+		"reason": _track_affinity_reason(scores, best_track)
+	}
+
+func _track_affinity_reason(scores: Dictionary, track: Dictionary) -> String:
+	var axis := _dominant_score_axis(scores)
+	if axis == "":
+		return "Score mix is too weak to identify a clear track fit."
+
+	var demand := _dominant_track_demand(track)
+	if demand == "":
+		demand = "balanced"
+
+	var axis_label := axis.capitalize()
+	return "%s score leads, so this setup fits %s tracks." % [axis_label, demand]
+
+func _dominant_score_axis(scores: Dictionary) -> String:
+	var axis := "power"
+	var value := float(scores.get("power", 0.0))
+	for candidate in ["technical", "endurance"]:
+		var score := float(scores.get(candidate, 0.0))
+		if score > value:
+			value = score
+			axis = candidate
+
+	return axis
+
+func _dominant_track_demand(track: Dictionary) -> String:
+	var best_axis := "straight"
+	var best_bias := float(track.get("straight_bias", 0.0))
+	var corner_bias := float(track.get("corner_bias", 0.0))
+	var endurance_bias := float(track.get("endurance_bias", 0.0))
+	if corner_bias > best_bias:
+		best_axis = "corner-heavy"
+		best_bias = corner_bias
+	if endurance_bias > best_bias:
+		best_axis = "endurance-heavy"
+
+	return best_axis
 
 func _build_rebuild_instructions(race_result: Dictionary) -> Array:
 	var candidates: Array = []
