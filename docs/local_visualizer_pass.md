@@ -17,12 +17,13 @@ The Builder now includes a procedural 3D engine visualizer. It is intentionally 
 - Fuel map changes fuel rail scale.
 - Ignition timing shifts spark plug placement.
 - Pistons, cam rail, crankshaft, pulleys, turbo wheels, and rotary rotors animate while the builder is open.
+- Detail pass adds valve covers, bolt rows, coil packs, intake runners, multi-branch exhaust headers, collector pipes, timing cover bolts, flywheel teeth, turbo fan blades, throttle bolts, and supercharger ribs.
 
 The visualizer reads from the final calculated setup object, not seed values, so it follows the same source-of-truth rule used for curve physics and report output.
 
 ## Scope Boundary
 
-This is not the final art pass. It is the first local UX pass that makes tuning changes visible. The model should keep the character of an engine without requiring detailed production assets yet.
+This is not the final art pass. It is the first local UX pass that makes tuning changes visible. The model should keep the character of an engine without requiring detailed production assets yet. Procedural detail is allowed here because it keeps iteration fast and preserves direct scaling from simulation values.
 
 Deferred until the later polish phase:
 

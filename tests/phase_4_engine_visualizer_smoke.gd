@@ -74,12 +74,16 @@ func _run() -> void:
 	if int(v8_state.get("cylinder_count", 0)) != 8 or int(v8_state.get("piston_nodes", 0)) != 8:
 		_fail("V8 visual should expose 8 cylinders and 8 moving piston nodes.")
 		return
+	if int(v8_state.get("visual_nodes", 0)) < 140:
+		_fail("V8 visual should keep the detailed model pass. Nodes=%s" % int(v8_state.get("visual_nodes", 0)))
+		return
 
-	print("PHASE_4_ENGINE_VISUALIZER_OK base_intake=%s tuned_intake=%s chamber=%s fuel=%s" % [
+	print("PHASE_4_ENGINE_VISUALIZER_OK base_intake=%s tuned_intake=%s chamber=%s fuel=%s v8_nodes=%s" % [
 		base_state.get("intake_scale", 0.0),
 		tuned_state.get("intake_scale", 0.0),
 		tuned_state.get("chamber_scale", 0.0),
-		tuned_state.get("fuel_scale", 0.0)
+		tuned_state.get("fuel_scale", 0.0),
+		v8_state.get("visual_nodes", 0)
 	])
 	_restore()
 	quit(0)
