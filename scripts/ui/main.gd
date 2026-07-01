@@ -2184,24 +2184,31 @@ func _metric_bar_color(value: float) -> Color:
 func _legend_item(name: String, color: Color, value: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
+	row.custom_minimum_size = Vector2(150, 0)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var swatch := ColorRect.new()
 	swatch.color = color
 	swatch.custom_minimum_size = Vector2(12, 12)
 	row.add_child(swatch)
 
-	row.add_child(_label("%s: %s" % [name, value], 12, Color.html("#374151")))
+	var text := _single_line_label("%s: %s" % [name, value], 12, Color.html("#374151"))
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text)
 	return row
 
 func _metric_row(name: String, value: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-	var label := _body_text(name)
+	var label := _single_line_label(name, 13, Color.html("#374151"))
+	label.custom_minimum_size = Vector2(104, 0)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(label)
 
-	var amount := _label(value, 13, Color.html("#111827"))
+	var amount := _single_line_label(value, 13, Color.html("#111827"))
+	amount.custom_minimum_size = Vector2(92, 0)
 	amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(amount)
 	return row
@@ -3601,12 +3608,19 @@ func _status(text: String, ok: bool) -> Label:
 	var color := Color.html("#065F46") if ok else Color.html("#9F1239")
 	return _label(text, 14, color)
 
+func _single_line_label(text: String, size: int, color: Color) -> Label:
+	var label := _label(text, size, color)
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	label.clip_text = false
+	return label
+
 func _label(text: String, size: int, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", color)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	label.clip_text = false
 	return label
 
 func _panel_style(background: Color, border: Color, border_width: int = 1) -> StyleBoxFlat:
