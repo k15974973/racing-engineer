@@ -5,6 +5,7 @@ const VIEW_RACE_SIM := "race_sim"
 const VIEW_ANALYSIS := "analysis"
 const VIEW_ROADMAP := "roadmap"
 const VIEW_DEBUG := "debug"
+const SHOW_DEBUG_NAV := false
 const CurveChart := preload("res://scripts/ui/curve_chart.gd")
 const TEST_BENCH_DURATION := 30.0
 const SAVED_SETUPS_PATH := "user://saved_setups.json"
@@ -189,8 +190,9 @@ func _build_shell() -> void:
 	_add_nav_button(nav, VIEW_ENGINE_BUILDER, "Build Engine")
 	_add_nav_button(nav, VIEW_RACE_SIM, "Race Sim")
 	_add_nav_button(nav, VIEW_ANALYSIS, "Analysis")
-	_add_nav_button(nav, VIEW_ROADMAP, "Roadmap")
-	_add_nav_button(nav, VIEW_DEBUG, "Data Smoke Test")
+	if SHOW_DEBUG_NAV:
+		_add_nav_button(nav, VIEW_ROADMAP, "Roadmap")
+		_add_nav_button(nav, VIEW_DEBUG, "Data Smoke Test")
 
 	var header := VBoxContainer.new()
 	header.add_theme_constant_override("separation", 2)
@@ -249,14 +251,22 @@ func _show_view(view_id: String) -> void:
 
 	_clear_content()
 
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_content.add_child(scroll)
+
 	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_theme_constant_override("margin_left", 20)
 	margin.add_theme_constant_override("margin_top", 18)
 	margin.add_theme_constant_override("margin_right", 20)
 	margin.add_theme_constant_override("margin_bottom", 18)
-	_content.add_child(margin)
+	scroll.add_child(margin)
 
 	var layout := VBoxContainer.new()
+	layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	layout.add_theme_constant_override("separation", 12)
 	margin.add_child(layout)
 	if _unlock_banner_visible():
@@ -596,7 +606,7 @@ func _test_bench_preview_panel() -> PanelContainer:
 	reset_button.pressed.connect(_reset_test_bench)
 	controls.add_child(reset_button)
 
-	_bench_time_label = _label("", 12, Color.html("#374151"))
+	_bench_time_label = _single_line_label("", 12, Color.html("#374151"))
 	_bench_time_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_bench_time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	controls.add_child(_bench_time_label)
@@ -607,19 +617,19 @@ func _test_bench_preview_panel() -> PanelContainer:
 	_bench_progress.custom_minimum_size = Vector2(0, 10)
 	stack.add_child(_bench_progress)
 
-	_bench_rpm_label = _body_text("")
+	_bench_rpm_label = _single_line_label("", 13, Color.html("#374151"))
 	_bench_rpm_bar = _bench_bar(float(setup["rpm_max"]))
 	stack.add_child(_bench_metric("RPM", _bench_rpm_label, _bench_rpm_bar))
 
-	_bench_boost_label = _body_text("")
+	_bench_boost_label = _single_line_label("", 13, Color.html("#374151"))
 	_bench_boost_bar = _bench_bar(3.0)
 	stack.add_child(_bench_metric("Boost", _bench_boost_label, _bench_boost_bar))
 
-	_bench_heat_label = _body_text("")
+	_bench_heat_label = _single_line_label("", 13, Color.html("#374151"))
 	_bench_heat_bar = _bench_bar(180.0)
 	stack.add_child(_bench_metric("Heat", _bench_heat_label, _bench_heat_bar))
 
-	_bench_reliability_label = _body_text("")
+	_bench_reliability_label = _single_line_label("", 13, Color.html("#374151"))
 	_bench_reliability_bar = _bench_bar(120.0)
 	stack.add_child(_bench_metric("Reliability", _bench_reliability_label, _bench_reliability_bar))
 
@@ -634,12 +644,17 @@ func _bench_metric(name: String, value_label: Label, bar: ProgressBar) -> VBoxCo
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stack.add_child(row)
 
-	var name_label := _body_text(name)
+	var name_label := _single_line_label(name, 13, Color.html("#374151"))
+	name_label.custom_minimum_size = Vector2(104, 0)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name_label)
 
+	value_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	value_label.clip_text = false
+	value_label.custom_minimum_size = Vector2(92, 0)
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(value_label)
 

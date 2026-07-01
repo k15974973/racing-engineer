@@ -23,6 +23,8 @@ func _run() -> void:
 
 	if not _assert_entry_cta():
 		return
+	if not _assert_debug_nav_hidden():
+		return
 	if not _assert_builder_steps():
 		return
 	if not _assert_post_race_cta():
@@ -48,6 +50,18 @@ func _assert_entry_cta() -> bool:
 		return false
 	if _has_label_text(_main, "Engine Builder prototype with future-phase race, analysis, and garage systems clearly separated in docs."):
 		_fail("Production shell should not show the old explanatory header text.")
+		return false
+	return true
+
+func _assert_debug_nav_hidden() -> bool:
+	if _main._nav_buttons.has("roadmap") or _main._nav_buttons.has("debug"):
+		_fail("Roadmap and Data Smoke Test should be hidden from the playtest nav.")
+		return false
+	if _find_button(_main, "Roadmap") != null:
+		_fail("Roadmap button should not be visible in the main nav.")
+		return false
+	if _find_button(_main, "Data Smoke Test") != null:
+		_fail("Data Smoke Test button should not be visible in the main nav.")
 		return false
 	return true
 
