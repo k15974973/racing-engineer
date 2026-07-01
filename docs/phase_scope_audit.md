@@ -74,12 +74,13 @@ Implemented as canonical Phase 3 start:
 - Engine report card with power, technical, and endurance bars.
 - Dot-product track affinity using `tracks.json` bias fields.
 - Saved-run comparison with max three runs per track and FIFO trimming.
+- Par-time progression unlocks for Ceramic and Compound through `data/unlocks.json`.
 - Rebuild instruction smoke test that races again and verifies the related score improves.
 
 Implemented as future-phase prototype:
 
 - Race history.
-- Progression unlocks.
+- Multi-rule progression metadata outside the canonical par-time unlocks.
 - Garage damage and repair.
 - Local economy.
 - Hybrid slot condition.

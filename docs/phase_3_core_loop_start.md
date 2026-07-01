@@ -58,6 +58,45 @@ Comparison behavior:
 - The weakest score row in each run is marked in the compare card.
 - Timeline and tactical windows stay out of this compare view.
 
+## Canonical Phase 3 Step 4
+
+Progression unlocks now use data-driven par-time goals.
+
+Calibration:
+
+- `v8/na/aluminum` on Power Ring baseline: `250.36`
+- Power Ring `par_time`: `232.83`
+- `v8/na/aluminum` on Technical Loop baseline: `307.39`
+- Technical Loop `par_time`: `285.87`
+
+Both par times are `baseline * 0.93`, requiring about 7 percent improvement over the baseline setup.
+
+Data behavior:
+
+- `tracks.json` now includes `par_time`.
+- `data/unlocks.json` defines unlock rules.
+- `GameData` loads and validates unlock contracts.
+- Unlock state persists to `user://unlock_state.json`.
+- Parts without an unlock rule remain always available.
+
+Current rules:
+
+- Beat Technical Loop par time to unlock Ceramic material.
+- Beat Power Ring par time to unlock Compound induction.
+
+Builder behavior:
+
+- Locked options are still visible.
+- Locked options render with `[LOCK]`, grey styling, and a tooltip.
+- Clicking a locked option is a no-op.
+- Unlocked options render normally.
+
+Save behavior:
+
+- `Save Race` calls `GameData.check_and_apply_unlocks()`.
+- New unlocks show a non-modal banner for about three seconds.
+- `Save Copy` does not re-trigger the same race unlock.
+
 ## Current Rule Set
 
 The first rule set intentionally uses existing Phase 2 data only:
@@ -110,6 +149,15 @@ Power score was also reweighted toward horsepower and torque, with mass reduced 
 5. Assert total delta equals `current.total_time - best.total_time`.
 6. Assert older kept runs have positive slower deltas when the newest run is best.
 
+`tests/phase_3_unlock_progression_smoke.gd` verifies unlock progression:
+
+1. Assert stored par times equal `v8/na/aluminum` baseline `* 0.93`.
+2. Assert Ceramic and Compound start locked after reset.
+3. Assert block options without unlock rules are always open.
+4. Force a Technical Loop result below par and assert Ceramic unlocks.
+5. Reload unlock state and assert Ceramic remains unlocked.
+6. Force a Technical Loop result above par and assert Ceramic stays locked.
+
 Current passing case:
 
 - Baseline: `v8/single_turbo/aluminum`
@@ -118,8 +166,9 @@ Current passing case:
 - Lag check: `NA 78.4`, `Twin Turbo 71.3`
 - Affinity check: `V8 NA -> power_ring`, `Inline-4 SC -> technical_loop`
 - Saved run compare: kept `Race 2`, `Race 3`, `Race 4`; best `Race 4`; best total `288.94`
+- Unlock progression: Power Ring `250.36 -> 232.83`, Technical Loop `307.39 -> 285.87`, one Ceramic unlock.
 
 ## Next Phase 3 Steps
 
-1. Simple canonical progression unlock: win Technical Loop to unlock Ceramic material.
-2. Visual tutorial and playtest notes after the loop runs two rebuild cycles without outside explanation.
+1. Visual tutorial after the loop runs two rebuild cycles without outside explanation.
+2. Playtest with 5 outside players and record where the loop needs less explanation.

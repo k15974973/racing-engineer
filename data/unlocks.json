@@ -1,0 +1,14 @@
+[
+  {
+    "id": "ceramic",
+    "condition": "beat_par",
+    "track": "technical_loop",
+    "unlocks": {"type": "material", "id": "ceramic"}
+  },
+  {
+    "id": "compound",
+    "condition": "beat_par",
+    "track": "power_ring",
+    "unlocks": {"type": "induction", "id": "compound"}
+  }
+]

@@ -5,6 +5,9 @@ const INDUCTION_SYSTEMS_PATH := "res://data/induction_systems.json"
 const MATERIALS_PATH := "res://data/materials.json"
 const ROADMAP_PHASES_PATH := "res://data/roadmap_phases.json"
 const TRACKS_PATH := "res://data/tracks.json"
+const UNLOCKS_PATH := "res://data/unlocks.json"
+const UNLOCK_STATE_PATH := "user://unlock_state.json"
+const UNLOCK_STATE_VERSION := 1
 const POWER_TORQUE_RPM_DIVISOR := 7121.0
 const RACE_HEAT_PENALTY_RATE := 0.00036
 const RACE_RELIABILITY_PENALTY_RATE := 0.0014
@@ -14,11 +17,14 @@ var inductions: Array = []
 var materials: Array = []
 var roadmap_phases: Array = []
 var tracks: Array = []
+var unlocks: Array = []
+var unlocked: Dictionary = {}
 var load_errors: Array[String] = []
 var contract_report: Dictionary = {}
 
 func _ready() -> void:
 	reload()
+	load_unlock_state()
 
 func reload() -> bool:
 	load_errors.clear()
@@ -27,6 +33,7 @@ func reload() -> bool:
 	materials = _load_array(MATERIALS_PATH, "materials")
 	roadmap_phases = _load_array(ROADMAP_PHASES_PATH, "roadmap phases")
 	tracks = _load_array(TRACKS_PATH, "tracks")
+	unlocks = _load_array(UNLOCKS_PATH, "unlocks")
 	validate_engine_data()
 	return load_errors.is_empty()
 
@@ -38,6 +45,7 @@ func validate_engine_data() -> bool:
 	ok = _validate_materials() and ok
 	ok = _validate_records(roadmap_phases, ["id", "name", "duration", "goal", "deliverable"], "roadmap phase", ROADMAP_PHASES_PATH) and ok
 	ok = _validate_tracks() and ok
+	ok = _validate_unlocks() and ok
 	return ok
 
 func get_summary() -> Dictionary:
@@ -47,6 +55,7 @@ func get_summary() -> Dictionary:
 		"materials": materials.size(),
 		"roadmap_phases": roadmap_phases.size(),
 		"tracks": tracks.size(),
+		"unlocks": unlocks.size(),
 		"errors": load_errors.duplicate()
 	}
 
@@ -65,6 +74,8 @@ func get_collection(collection_name: String) -> Array:
 			return roadmap_phases
 		"tracks":
 			return tracks
+		"unlocks":
+			return unlocks
 		_:
 			return []
 
@@ -80,6 +91,120 @@ func get_default_builder_selection() -> Dictionary:
 
 func get_default_track_id() -> String:
 	return _first_id(tracks)
+
+func get_par_time(track_id: String) -> float:
+	var track := get_record_by_id("tracks", track_id)
+	return float(track.get("par_time", 0.0))
+
+func load_unlock_state() -> void:
+	unlocked = _default_unlock_state()
+	if not FileAccess.file_exists(UNLOCK_STATE_PATH):
+		save_unlock_state()
+		return
+
+	var text := FileAccess.get_file_as_string(UNLOCK_STATE_PATH)
+	var parsed: Variant = JSON.parse_string(text)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		save_unlock_state()
+		return
+
+	var data: Dictionary = parsed
+	if int(data.get("version", 0)) != UNLOCK_STATE_VERSION:
+		save_unlock_state()
+		return
+
+	var raw_unlocked: Variant = data.get("unlocked", {})
+	if typeof(raw_unlocked) == TYPE_DICTIONARY:
+		var raw: Dictionary = raw_unlocked
+		for unlock in unlocks:
+			if typeof(unlock) != TYPE_DICTIONARY:
+				continue
+
+			var rule: Dictionary = unlock
+			var unlock_id := str(rule.get("id", ""))
+			if unlock_id != "":
+				unlocked[unlock_id] = bool(raw.get(unlock_id, false))
+
+	save_unlock_state()
+
+func save_unlock_state() -> void:
+	var payload := {
+		"version": UNLOCK_STATE_VERSION,
+		"unlocked": _normalized_unlock_state(unlocked)
+	}
+	var file := FileAccess.open(UNLOCK_STATE_PATH, FileAccess.WRITE)
+	if file == null:
+		push_warning("Could not write unlock state to %s" % UNLOCK_STATE_PATH)
+		return
+
+	file.store_string(JSON.stringify(payload, "\t"))
+
+func reset_unlock_state(persist: bool = true) -> void:
+	unlocked = _default_unlock_state()
+	if persist:
+		save_unlock_state()
+
+func check_and_apply_unlocks(race_result: Dictionary) -> Array:
+	var newly_unlocked: Array = []
+	if race_result.is_empty() or race_result.has("error"):
+		return newly_unlocked
+
+	var track: Dictionary = race_result.get("track", {})
+	var track_id := str(track.get("id", race_result.get("track_id", "")))
+	var par_time := get_par_time(track_id)
+	var total_time := float(race_result.get("total_time", INF))
+	if track_id == "" or par_time <= 0.0 or total_time >= par_time:
+		return newly_unlocked
+
+	for item in unlocks:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var rule: Dictionary = item
+		var unlock_id := str(rule.get("id", ""))
+		if unlock_id == "" or str(rule.get("condition", "")) != "beat_par":
+			continue
+		if str(rule.get("track", "")) != track_id:
+			continue
+		if bool(unlocked.get(unlock_id, false)):
+			continue
+
+		unlocked[unlock_id] = true
+		newly_unlocked.append(rule.duplicate(true))
+
+	if not newly_unlocked.is_empty():
+		save_unlock_state()
+
+	return newly_unlocked
+
+func is_unlocked(part_type: String, part_id: String) -> bool:
+	var unlock_id := _find_unlock_id(part_type, part_id)
+	if unlock_id == "":
+		return true
+
+	return bool(unlocked.get(unlock_id, false))
+
+func unlock_requirement_text(part_type: String, part_id: String) -> String:
+	var rule := _find_unlock_rule(part_type, part_id)
+	if rule.is_empty():
+		return ""
+
+	var track_id := str(rule.get("track", ""))
+	var track := get_record_by_id("tracks", track_id)
+	var track_name := str(track.get("name", track_id))
+	return "Thang %s (beat par time) de mo khoa" % track_name
+
+func unlock_display_text(rule: Dictionary) -> String:
+	var unlocks_dict: Dictionary = rule.get("unlocks", {})
+	var part_type := str(unlocks_dict.get("type", ""))
+	var part_id := str(unlocks_dict.get("id", ""))
+	var track_id := str(rule.get("track", ""))
+	var track := get_record_by_id("tracks", track_id)
+	var track_name := str(track.get("name", track_id))
+	var collection := _unlock_collection_name(part_type)
+	var record := get_record_by_id(collection, part_id)
+	var part_name := str(record.get("name", part_id.capitalize()))
+	return "%s (%s)" % [part_name, track_name]
 
 func calculate_engine_setup(block_id: String, induction_id: String, material_id: String, tuning: Dictionary = {}) -> Dictionary:
 	var block := _find_or_first(blocks, block_id)
@@ -819,6 +944,52 @@ func _saved_run_setup_summary(result: Dictionary) -> String:
 		material.get("name", "Material")
 	]
 
+func _default_unlock_state() -> Dictionary:
+	var state := {}
+	for item in unlocks:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var rule: Dictionary = item
+		var unlock_id := str(rule.get("id", ""))
+		if unlock_id != "":
+			state[unlock_id] = false
+
+	return state
+
+func _normalized_unlock_state(raw: Dictionary) -> Dictionary:
+	var state := _default_unlock_state()
+	for unlock_id in state.keys():
+		state[unlock_id] = bool(raw.get(unlock_id, false))
+	return state
+
+func _find_unlock_id(part_type: String, part_id: String) -> String:
+	var rule := _find_unlock_rule(part_type, part_id)
+	return str(rule.get("id", ""))
+
+func _find_unlock_rule(part_type: String, part_id: String) -> Dictionary:
+	for item in unlocks:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var rule: Dictionary = item
+		var unlocks_dict: Dictionary = rule.get("unlocks", {})
+		if str(unlocks_dict.get("type", "")) == part_type and str(unlocks_dict.get("id", "")) == part_id:
+			return rule
+
+	return {}
+
+func _unlock_collection_name(part_type: String) -> String:
+	match part_type:
+		"block":
+			return "blocks"
+		"induction":
+			return "inductions"
+		"material":
+			return "materials"
+		_:
+			return ""
+
 func _build_race_sectors(power_score: float, technical_score: float, endurance_score: float, straight_bias: float, corner_bias: float, endurance_bias: float) -> Array:
 	return [
 		{
@@ -1330,7 +1501,7 @@ func _validate_materials() -> bool:
 	return ok
 
 func _validate_tracks() -> bool:
-	var fields := ["id", "name", "laps", "length_km", "base_lap_time", "straight_bias", "corner_bias", "endurance_bias", "heat_stress", "description"]
+	var fields := ["id", "name", "laps", "length_km", "base_lap_time", "par_time", "straight_bias", "corner_bias", "endurance_bias", "heat_stress", "description"]
 	var ok := _validate_records(tracks, fields, "track", TRACKS_PATH)
 	ok = _validate_unique_ids(tracks, "track", TRACKS_PATH) and ok
 
@@ -1346,6 +1517,7 @@ func _validate_tracks() -> bool:
 		ok = _validate_number_field(track, "laps", label, 1.0) and ok
 		ok = _validate_number_field(track, "length_km", label, 0.1) and ok
 		ok = _validate_number_field(track, "base_lap_time", label, 1.0) and ok
+		ok = _validate_number_field(track, "par_time", label, 1.0) and ok
 		ok = _validate_number_field(track, "straight_bias", label, 0.0, 1.0) and ok
 		ok = _validate_number_field(track, "corner_bias", label, 0.0, 1.0) and ok
 		ok = _validate_number_field(track, "endurance_bias", label, 0.0, 1.0) and ok
@@ -1358,6 +1530,53 @@ func _validate_tracks() -> bool:
 			ok = false
 
 	contract_report["tracks"] = _contract_entry("Track contract", tracks.size(), fields, ok)
+	return ok
+
+func _validate_unlocks() -> bool:
+	var fields := ["id", "condition", "track", "unlocks"]
+	var ok := _validate_records(unlocks, fields, "unlock", UNLOCKS_PATH)
+	ok = _validate_unique_ids(unlocks, "unlock", UNLOCKS_PATH) and ok
+
+	for index in range(unlocks.size()):
+		var record: Variant = unlocks[index]
+		if typeof(record) != TYPE_DICTIONARY:
+			continue
+
+		var rule: Dictionary = record
+		var label := _record_location("unlock", index, UNLOCKS_PATH)
+		ok = _validate_string_field(rule, "id", label) and ok
+		ok = _validate_string_field(rule, "condition", label) and ok
+		ok = _validate_string_field(rule, "track", label) and ok
+		if str(rule.get("condition", "")) != "beat_par":
+			load_errors.append("%s field 'condition' must be 'beat_par'." % label)
+			ok = false
+		if get_record_by_id("tracks", str(rule.get("track", ""))).is_empty():
+			load_errors.append("%s field 'track' references an unknown track id." % label)
+			ok = false
+
+		var unlocks_value: Variant = rule.get("unlocks")
+		if typeof(unlocks_value) != TYPE_DICTIONARY:
+			load_errors.append("%s field 'unlocks' must be a dictionary." % label)
+			ok = false
+			continue
+
+		var unlocks_dict: Dictionary = unlocks_value
+		if not unlocks_dict.has("type") or not unlocks_dict.has("id"):
+			load_errors.append("%s field 'unlocks' must include type and id." % label)
+			ok = false
+			continue
+
+		var part_type := str(unlocks_dict.get("type", ""))
+		var part_id := str(unlocks_dict.get("id", ""))
+		var collection_name := _unlock_collection_name(part_type)
+		if collection_name == "":
+			load_errors.append("%s unlocks.type must be block, induction, or material." % label)
+			ok = false
+		elif get_record_by_id(collection_name, part_id).is_empty():
+			load_errors.append("%s unlocks.id references an unknown %s id." % [label, part_type])
+			ok = false
+
+	contract_report["unlocks"] = _contract_entry("Unlock contract", unlocks.size(), fields, ok)
 	return ok
 
 func _contract_entry(label: String, count: int, fields: Array, ok: bool) -> Dictionary:

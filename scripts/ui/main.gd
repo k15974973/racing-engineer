@@ -141,6 +141,8 @@ var _last_damage_report: Dictionary = {}
 var _last_reward_report: Dictionary = {}
 var _race_committed := false
 var _timeline_focus_index := 0
+var _unlock_banner_text := ""
+var _unlock_banner_expires_msec := 0
 
 func _ready() -> void:
 	_load_progression()
@@ -151,6 +153,7 @@ func _ready() -> void:
 	_show_view(VIEW_ENGINE_BUILDER)
 
 func _process(delta: float) -> void:
+	_update_unlock_banner()
 	if not _bench_running:
 		return
 
@@ -227,6 +230,8 @@ func _show_view(view_id: String) -> void:
 	var layout := VBoxContainer.new()
 	layout.add_theme_constant_override("separation", 12)
 	margin.add_child(layout)
+	if _unlock_banner_visible():
+		layout.add_child(_unlock_banner_panel())
 
 	match view_id:
 		VIEW_ENGINE_BUILDER:
@@ -247,6 +252,47 @@ func _clear_content() -> void:
 	for child in _content.get_children():
 		_content.remove_child(child)
 		child.queue_free()
+
+func _unlock_banner_visible() -> bool:
+	return _unlock_banner_text != "" and Time.get_ticks_msec() < _unlock_banner_expires_msec
+
+func _update_unlock_banner() -> void:
+	if _unlock_banner_text == "":
+		return
+	if Time.get_ticks_msec() < _unlock_banner_expires_msec:
+		return
+
+	_unlock_banner_text = ""
+	_unlock_banner_expires_msec = 0
+	_show_view(_current_view)
+
+func _set_unlock_banner(new_unlocks: Array) -> void:
+	if new_unlocks.is_empty():
+		return
+
+	var names: Array = []
+	for item in new_unlocks:
+		if typeof(item) == TYPE_DICTIONARY:
+			names.append(GameData.unlock_display_text(item))
+	if names.is_empty():
+		return
+
+	_unlock_banner_text = "Da mo khoa: %s" % _join_strings(names, ", ")
+	_unlock_banner_expires_msec = Time.get_ticks_msec() + 3000
+
+func _unlock_banner_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#ECFDF5"), Color.html("#0F6E56")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+	margin.add_child(_label(_unlock_banner_text, 14, Color.html("#065F46")))
+	return panel
 
 func _render_engine_builder(layout: VBoxContainer) -> void:
 	_ensure_builder_selection()
@@ -287,8 +333,8 @@ func _ensure_builder_selection() -> void:
 	for key in _builder_selection.keys():
 		var selected_id := str(_builder_selection[key])
 		var collection_name := _builder_collection_name(key)
-		if selected_id == "" or GameData.get_record_by_id(collection_name, selected_id).is_empty():
-			_builder_selection[key] = str(defaults.get(key, ""))
+		if selected_id == "" or GameData.get_record_by_id(collection_name, selected_id).is_empty() or not _builder_option_unlocked(key, selected_id):
+			_builder_selection[key] = _first_unlocked_builder_id(key, GameData.get_collection(collection_name), str(defaults.get(key, "")))
 
 func _builder_choice_panel(title: String, records: Array, key: String) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -322,30 +368,33 @@ func _builder_choice_panel(title: String, records: Array, key: String) -> PanelC
 		var record: Dictionary = item
 		var record_id := str(record.get("id", ""))
 		var selected := record_id == str(_builder_selection[key])
-		choices.add_child(_slot_choice_button(str(record.get("name", "Unnamed")), record_id, key, selected))
+		var locked := not _builder_option_unlocked(key, record_id)
+		choices.add_child(_slot_choice_button(str(record.get("name", "Unnamed")), record_id, key, selected, locked))
 
 	var selected_record: Dictionary = GameData.get_record_by_id(_builder_collection_name(key), str(_builder_selection[key]))
 	stack.add_child(_selected_slot_panel(key, selected_record))
 
 	return panel
 
-func _slot_choice_button(text: String, record_id: String, key: String, selected: bool) -> Button:
+func _slot_choice_button(text: String, record_id: String, key: String, selected: bool, locked: bool) -> Button:
 	var button := Button.new()
-	button.text = text
+	button.text = "[LOCK] %s" % text if locked else text
 	button.focus_mode = Control.FOCUS_NONE
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.tooltip_text = "Selected" if selected else "Select %s" % text
+	button.tooltip_text = GameData.unlock_requirement_text(_unlock_type_for_builder_key(key), record_id) if locked else ("Selected" if selected else "Select %s" % text)
 	button.pressed.connect(_on_builder_choice_selected.bind(record_id, key))
 
-	var normal_bg := Color.html("#111827") if selected else Color.html("#FFFFFF")
-	var normal_border := Color.html("#111827") if selected else Color.html("#D1D5DB")
-	var hover_bg := Color.html("#1F2937") if selected else Color.html("#EEF2FF")
-	var hover_border := Color.html("#1F2937") if selected else Color.html("#534AB7")
+	var normal_bg := Color.html("#F3F4F6") if locked else (Color.html("#111827") if selected else Color.html("#FFFFFF"))
+	var normal_border := Color.html("#CBD5E1") if locked else (Color.html("#111827") if selected else Color.html("#D1D5DB"))
+	var hover_bg := Color.html("#F3F4F6") if locked else (Color.html("#1F2937") if selected else Color.html("#EEF2FF"))
+	var hover_border := Color.html("#CBD5E1") if locked else (Color.html("#1F2937") if selected else Color.html("#534AB7"))
 	button.add_theme_stylebox_override("normal", _panel_style(normal_bg, normal_border))
 	button.add_theme_stylebox_override("hover", _panel_style(hover_bg, hover_border))
 	button.add_theme_stylebox_override("pressed", _panel_style(Color.html("#374151"), Color.html("#111827")))
-	button.add_theme_color_override("font_color", Color.html("#FFFFFF") if selected else Color.html("#111827"))
-	button.add_theme_color_override("font_hover_color", Color.html("#FFFFFF") if selected else Color.html("#111827"))
+	button.add_theme_stylebox_override("disabled", _panel_style(normal_bg, normal_border))
+	button.add_theme_color_override("font_color", Color.html("#6B7280") if locked else (Color.html("#FFFFFF") if selected else Color.html("#111827")))
+	button.add_theme_color_override("font_hover_color", Color.html("#6B7280") if locked else (Color.html("#FFFFFF") if selected else Color.html("#111827")))
+	button.add_theme_color_override("font_disabled_color", Color.html("#6B7280"))
 	return button
 
 func _selected_slot_panel(key: String, record: Dictionary) -> PanelContainer:
@@ -1695,6 +1744,7 @@ func _save_current_race() -> void:
 	var reward_report := _current_reward_report()
 	if not _race_committed:
 		_apply_progression_after_race(true)
+		_set_unlock_banner(GameData.check_and_apply_unlocks(_race_result))
 		damage_report = _apply_garage_damage_after_race(_race_result)
 		_last_damage_report = damage_report.duplicate(true)
 		reward_report = _apply_race_reward(_race_reward_estimate(_race_result, damage_report))
@@ -1927,7 +1977,28 @@ func _builder_collection_name(key: String) -> String:
 		_:
 			return ""
 
+func _unlock_type_for_builder_key(key: String) -> String:
+	return key
+
+func _builder_option_unlocked(key: String, record_id: String) -> bool:
+	return GameData.is_unlocked(_unlock_type_for_builder_key(key), record_id)
+
+func _first_unlocked_builder_id(key: String, records: Array, fallback_id: String) -> String:
+	for item in records:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+
+		var record: Dictionary = item
+		var record_id := str(record.get("id", ""))
+		if record_id != "" and _builder_option_unlocked(key, record_id):
+			return record_id
+
+	return fallback_id
+
 func _on_builder_choice_selected(selected_id: String, key: String) -> void:
+	if not _builder_option_unlocked(key, selected_id):
+		return
+
 	_builder_selection[key] = selected_id
 	_reset_race_result()
 	_reset_test_bench()
@@ -2174,6 +2245,7 @@ func _race_track_panel() -> PanelContainer:
 	stack.add_child(_metric_row("Laps", str(track.get("laps", "?"))))
 	stack.add_child(_metric_row("Length", "%s km" % track.get("length_km", "?")))
 	stack.add_child(_metric_row("Base lap", "%ss" % track.get("base_lap_time", "?")))
+	stack.add_child(_metric_row("Par time", "%ss" % track.get("par_time", "?")))
 	var best_record := _best_race_history_record_for_track(_race_track_id)
 	if best_record.is_empty():
 		stack.add_child(_body_text("No saved run on this track yet."))
