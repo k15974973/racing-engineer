@@ -678,7 +678,7 @@ func _build_rebuild_instructions(race_result: Dictionary) -> Array:
 			"effective_heat %0.1f and endurance_score %0.1f." % [heat, endurance_score]
 		))
 
-	if power_score < 50.0 and track_id == "power_ring":
+	if power_score < 60.0 and track_id == "power_ring":
 		candidates.append(_rebuild_instruction(
 			"Top-end power deficit",
 			"Block is short on top-end power for Power Ring. Try V8 or V6 before chasing tactics.",

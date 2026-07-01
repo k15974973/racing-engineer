@@ -109,7 +109,7 @@ The first rule set intentionally uses existing Phase 2 data only:
 - If heat is above 85 percent of the heat scale and `endurance_score < 50`:
   - target `material`
   - recommend Titanium or Ceramic.
-- If `power_score < 50` on Power Ring:
+- If `power_score < 60` on Power Ring:
   - target `block`
   - recommend V8 or V6.
 
@@ -168,6 +168,13 @@ Power score was also reweighted toward horsepower and torque, with mass reduced 
 4. Assert `GameData` still has Ceramic locked.
 5. Assert the builder treats Ceramic as selectable through the progression bridge.
 
+`tests/phase_3_default_guidance_smoke.gd` protects the first playtest loop:
+
+1. Use the default builder setup.
+2. Run it on Power Ring.
+3. Assert analysis returns a block rebuild instruction.
+4. This prevents the starter `v4/na/aluminum` case from losing on a power track without telling the player why.
+
 Current passing case:
 
 - Baseline: `v8/single_turbo/aluminum`
@@ -178,8 +185,12 @@ Current passing case:
 - Saved run compare: kept `Race 2`, `Race 3`, `Race 4`; best `Race 4`; best total `288.94`
 - Unlock progression: Power Ring `250.36 -> 232.83`, Technical Loop `307.39 -> 285.87`, one Ceramic unlock.
 - Builder unlock bridge: `v4/na/aluminum` on Technical Loop satisfies `thermal_mastery` and opens Ceramic through progression.
+- Default guidance: `v4/na/aluminum` on Power Ring now triggers a block rebuild instruction at `power_score 52.8`.
 
 ## Next Phase 3 Steps
 
-1. Visual tutorial after the loop runs two rebuild cycles without outside explanation.
-2. Playtest with 5 outside players and record where the loop needs less explanation.
+Phase 3 is feature-complete in repo.
+
+The only remaining Phase 3 validation is the five-person playtest pass in `docs/phase_3_playtest_protocol.md`.
+
+After that pass, Phase 4 can start.
