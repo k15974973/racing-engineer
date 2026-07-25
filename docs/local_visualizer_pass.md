@@ -12,12 +12,14 @@ The Builder now includes a procedural 3D engine visualizer. It is intentionally 
 
 - Block choice changes cylinder count and layout.
 - Induction choice adds NA throttle, turbo, twin turbo, or supercharger forms.
+- Material choice changes engine tint: Aluminum is bright silver, Titanium is blue-gray, Ceramic is warm off-white.
 - Compression changes chamber/sleeve size.
 - Boost changes intake and forced-induction scale.
 - Fuel map changes fuel rail scale.
 - Ignition timing shifts spark plug placement.
 - Pistons, cam rail, crankshaft, pulleys, turbo wheels, and rotary rotors animate while the builder is open.
 - Detail pass adds valve covers, bolt rows, coil packs, intake runners, multi-branch exhaust headers, collector pipes, timing cover bolts, flywheel teeth, turbo fan blades, throttle bolts, and supercharger ribs.
+- Viewport is fixed at 640x320 with an isometric camera and 6 degrees/second auto-rotation.
 
 The visualizer reads from the final calculated setup object, not seed values, so it follows the same source-of-truth rule used for curve physics and report output.
 
@@ -31,6 +33,7 @@ Deferred until the later polish phase:
 - Car shell / garage background.
 - Sound, turbo spool, exhaust effects, and particles.
 - Full CS2-style loadout composition and transitions.
+- Drag-to-rotate SubViewport input. Auto-rotate is the current default because it delivers the configuration read without adding interaction complexity yet.
 - Online Async.
 
 ## Test Standard

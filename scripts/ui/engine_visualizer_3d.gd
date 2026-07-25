@@ -1,6 +1,7 @@
 extends PanelContainer
 
-const VIEWPORT_SIZE := Vector2i(720, 320)
+const VIEWPORT_SIZE := Vector2i(640, 320)
+const AUTO_ROTATE_DEG_PER_SEC := 6.0
 const CYLINDER_COLOR := Color(0.35, 0.78, 0.92, 0.34)
 const PISTON_COLOR := Color(1.0, 0.38, 0.18, 0.78)
 const FUEL_COLOR := Color(0.98, 0.84, 0.18, 0.78)
@@ -11,6 +12,9 @@ const BRIGHT_STEEL_COLOR := Color(0.88, 0.92, 0.96, 0.82)
 const DARK_STEEL_COLOR := Color(0.18, 0.22, 0.28, 0.70)
 const COVER_COLOR := Color(0.04, 0.05, 0.06, 0.86)
 const RUBBER_COLOR := Color(0.02, 0.025, 0.03, 0.88)
+const ALUMINUM_COLOR := Color(0.72, 0.72, 0.72, 0.72)
+const TITANIUM_COLOR := Color(0.43, 0.49, 0.56, 0.78)
+const CERAMIC_COLOR := Color(0.94, 0.92, 0.90, 0.78)
 
 var _setup: Dictionary = {}
 var _visual_state: Dictionary = {}
@@ -49,7 +53,7 @@ func get_render_image() -> Image:
 func _process(delta: float) -> void:
 	_time += delta
 	if _engine_root != null:
-		_engine_root.rotation_degrees.y = sin(_time * 0.35) * 5.0
+		_engine_root.rotation_degrees.y = fmod(_engine_root.rotation_degrees.y + delta * AUTO_ROTATE_DEG_PER_SEC, 360.0)
 
 	for index in _pistons.size():
 		var piston := _pistons[index]
@@ -119,11 +123,11 @@ func _build_shell() -> void:
 	_scene_root.add_child(environment)
 
 	var camera := Camera3D.new()
-	camera.position = Vector3(5.7, 3.4, 7.6)
-	camera.fov = 50.0
+	camera.position = Vector3(5.0, 3.2, 5.0)
+	camera.fov = 48.0
 	camera.current = true
 	_scene_root.add_child(camera)
-	camera.look_at(Vector3(0.0, 0.45, 0.0), Vector3.UP)
+	camera.look_at(Vector3(0.0, 0.40, 0.0), Vector3.UP)
 
 	var key_light := DirectionalLight3D.new()
 	key_light.rotation_degrees = Vector3(-46.0, -34.0, 0.0)
@@ -173,12 +177,14 @@ func _rebuild_engine() -> void:
 	var fuel_scale := clampf(1.0 + fuel_map * 0.035, 0.68, 1.36)
 	var spark_shift := ignition_timing * 0.025
 	var material_mass_scale := clampf(float(material.get("mass_mult", 1.0)), 0.72, 1.14)
+	var material_id := str(material.get("id", ""))
+	var material_color := _material_color(material_id)
 	var forced := induction_id != "na"
 
 	if block_id == "rotary":
-		_build_rotary(chamber_scale, intake_scale, fuel_scale, forced)
+		_build_rotary(chamber_scale, intake_scale, fuel_scale, forced, material_color)
 	else:
-		_build_piston_engine(block_id, cylinder_count, chamber_scale, intake_scale, fuel_scale, material_mass_scale, spark_shift)
+		_build_piston_engine(block_id, cylinder_count, chamber_scale, intake_scale, fuel_scale, material_mass_scale, spark_shift, material_color)
 
 	_build_induction(induction_id, intake_scale, forced)
 	_build_blueprint_frame()
@@ -187,7 +193,8 @@ func _rebuild_engine() -> void:
 		"valid": true,
 		"block_id": block_id,
 		"induction_id": induction_id,
-		"material_id": str(material.get("id", "")),
+		"material_id": material_id,
+		"material_color": material_color.to_html(false),
 		"cylinder_count": cylinder_count,
 		"piston_nodes": _pistons.size(),
 		"chamber_scale": snappedf(chamber_scale, 0.001),
@@ -195,10 +202,12 @@ func _rebuild_engine() -> void:
 		"fuel_scale": snappedf(fuel_scale, 0.001),
 		"spark_shift": snappedf(spark_shift, 0.001),
 		"has_forced_induction": forced,
-		"visual_nodes": _engine_root.get_child_count()
+		"visual_nodes": _engine_root.get_child_count(),
+		"auto_rotate_deg_per_sec": AUTO_ROTATE_DEG_PER_SEC,
+		"viewport_size": "%sx%s" % [VIEWPORT_SIZE.x, VIEWPORT_SIZE.y]
 	}
 
-func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: float, intake_scale: float, fuel_scale: float, material_mass_scale: float, spark_shift: float) -> void:
+func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: float, intake_scale: float, fuel_scale: float, material_mass_scale: float, spark_shift: float, material_color: Color) -> void:
 	var banks := 1
 	if block_id == "v6" or block_id == "v8" or block_id == "boxer_4":
 		banks = 2
@@ -208,8 +217,8 @@ func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: 
 	var block_width := maxf(1.8, float(cylinders_per_bank) * spacing + 0.35)
 	var block_depth := 0.92 if banks == 1 else 1.45
 	var block_height := 0.62 * chamber_scale
-	_engine_root.add_child(_box("engine_block", Vector3(0.0, -0.03, 0.0), Vector3(block_width, block_height, block_depth) * material_mass_scale, DARK_STEEL_COLOR))
-	_engine_root.add_child(_box("transparent_outline", Vector3(0.0, 0.18, 0.0), Vector3(block_width + 0.18, 0.88 * chamber_scale, block_depth + 0.15), Color(0.38, 0.78, 0.95, 0.14)))
+	_engine_root.add_child(_box("engine_block", Vector3(0.0, -0.03, 0.0), Vector3(block_width, block_height, block_depth) * material_mass_scale, material_color))
+	_engine_root.add_child(_box("transparent_outline", Vector3(0.0, 0.18, 0.0), Vector3(block_width + 0.18, 0.88 * chamber_scale, block_depth + 0.15), _with_alpha(material_color, 0.16)))
 	_build_valve_covers(block_id, banks, cylinders_per_bank, block_width, block_depth, chamber_scale)
 
 	var built := 0
@@ -270,8 +279,8 @@ func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: 
 	var cam_pulley := _cylinder("cam_pulley", Vector3(front_x, 1.08 * chamber_scale, 0.0), 0.13, 0.07, STEEL_COLOR, Vector3(90.0, 0.0, 0.0))
 	_engine_root.add_child(cam_pulley)
 	_spinners.append(cam_pulley)
-	_engine_root.add_child(_box("belt_run_left", Vector3(front_x, 0.35, -0.14), Vector3(0.025, 1.32 * chamber_scale, 0.025), Color(0.05, 0.07, 0.09, 0.74)))
-	_engine_root.add_child(_box("belt_run_right", Vector3(front_x, 0.35, 0.14), Vector3(0.025, 1.32 * chamber_scale, 0.025), Color(0.05, 0.07, 0.09, 0.74)))
+	_engine_root.add_child(_box("belt_run_left", Vector3(front_x, 0.35, -0.14), Vector3(0.025, 1.32 * chamber_scale, 0.025), RUBBER_COLOR))
+	_engine_root.add_child(_box("belt_run_right", Vector3(front_x, 0.35, 0.14), Vector3(0.025, 1.32 * chamber_scale, 0.025), RUBBER_COLOR))
 	_build_front_cover_detail(front_x, chamber_scale, block_depth)
 
 func _build_valve_covers(block_id: String, banks: int, cylinders_per_bank: int, block_width: float, block_depth: float, chamber_scale: float) -> void:
@@ -342,8 +351,8 @@ func _build_front_cover_detail(front_x: float, chamber_scale: float, block_depth
 		tooth.rotation_degrees.x = rad_to_deg(angle)
 		_engine_root.add_child(tooth)
 
-func _build_rotary(chamber_scale: float, intake_scale: float, fuel_scale: float, forced: bool) -> void:
-	_engine_root.add_child(_box("rotary_housing", Vector3(0.0, 0.05, 0.0), Vector3(1.9 * chamber_scale, 0.78 * chamber_scale, 1.0), DARK_STEEL_COLOR))
+func _build_rotary(chamber_scale: float, intake_scale: float, fuel_scale: float, forced: bool, material_color: Color) -> void:
+	_engine_root.add_child(_box("rotary_housing", Vector3(0.0, 0.05, 0.0), Vector3(1.9 * chamber_scale, 0.78 * chamber_scale, 1.0), material_color))
 	for i in 2:
 		var x := -0.45 if i == 0 else 0.45
 		var rotor := _cylinder("rotor_%s" % i, Vector3(x, 0.16, 0.0), 0.31 * chamber_scale, 0.22, Color(1.0, 0.48, 0.18, 0.72), Vector3(90.0, 0.0, 0.0), 3)
@@ -484,11 +493,23 @@ func _sphere(node_name: String, position_value: Vector3, radius: float, color: C
 	instance.material_override = _material(color)
 	return instance
 
+func _material_color(material_id: String) -> Color:
+	match material_id:
+		"titanium":
+			return TITANIUM_COLOR
+		"ceramic":
+			return CERAMIC_COLOR
+		_:
+			return ALUMINUM_COLOR
+
+func _with_alpha(color: Color, alpha: float) -> Color:
+	return Color(color.r, color.g, color.b, alpha)
+
 func _material(color: Color) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.metallic = 0.15
+	material.metallic = 0.0 if color.r > 0.9 and color.g > 0.88 and color.b > 0.86 else 0.15
 	material.roughness = 0.38
 	material.emission_enabled = true
 	material.emission = Color(color.r, color.g, color.b, 1.0)

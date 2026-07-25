@@ -34,6 +34,12 @@ func _run() -> void:
 	if bool(base_state.get("has_forced_induction", true)):
 		_fail("NA visual should not report forced induction.")
 		return
+	if str(base_state.get("viewport_size", "")) != "640x320":
+		_fail("Engine visualizer viewport should stay 640x320.")
+		return
+	if not is_equal_approx(float(base_state.get("auto_rotate_deg_per_sec", 0.0)), 6.0):
+		_fail("Engine visualizer should auto-rotate at 6 degrees per second.")
+		return
 
 	var tuned: Dictionary = game_data.calculate_engine_setup("inline_4", "single_turbo", "aluminum", {
 		"compression": 14.0,
@@ -76,6 +82,21 @@ func _run() -> void:
 		return
 	if int(v8_state.get("visual_nodes", 0)) < 140:
 		_fail("V8 visual should keep the detailed model pass. Nodes=%s" % int(v8_state.get("visual_nodes", 0)))
+		return
+	if str(v8_state.get("material_color", "")) == str(base_state.get("material_color", "")):
+		_fail("Titanium visual should use a different material tint than Aluminum.")
+		return
+
+	var ceramic: Dictionary = game_data.calculate_engine_setup("v8", "na", "ceramic", {
+		"compression": 10.5,
+		"boost": 0.0,
+		"fuel_map": 0.0
+	})
+	_visualizer.set_setup(ceramic)
+	await process_frame
+	var ceramic_state: Dictionary = _visualizer.get_visual_state()
+	if str(ceramic_state.get("material_color", "")) == str(v8_state.get("material_color", "")):
+		_fail("Ceramic visual should use a different material tint than Titanium.")
 		return
 
 	print("PHASE_4_ENGINE_VISUALIZER_OK base_intake=%s tuned_intake=%s chamber=%s fuel=%s v8_nodes=%s" % [
