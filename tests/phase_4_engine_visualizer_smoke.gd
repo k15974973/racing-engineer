@@ -43,6 +43,15 @@ func _run() -> void:
 	if str(base_state.get("shader", "")) != "holographic_fresnel":
 		_fail("Engine visualizer should use the holographic fresnel shader.")
 		return
+	if not is_equal_approx(float(base_state.get("fresnel_power", 0.0)), 1.8):
+		_fail("Holographic fresnel should stay softened at 1.8 power.")
+		return
+	if str(base_state.get("msaa_3d", "")) != "8x" or str(base_state.get("screen_space_aa", "")) != "fxaa":
+		_fail("Engine visualizer should keep MSAA 8x plus FXAA.")
+		return
+	if int(base_state.get("min_cylinder_segments", 0)) < 32 or int(base_state.get("min_sphere_segments", 0)) < 24:
+		_fail("Engine visualizer mesh resolution should keep smooth cylinder/sphere minimums.")
+		return
 
 	var tuned: Dictionary = game_data.calculate_engine_setup("inline_4", "single_turbo", "aluminum", {
 		"compression": 14.0,

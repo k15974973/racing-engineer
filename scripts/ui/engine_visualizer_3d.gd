@@ -20,11 +20,12 @@ shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
 
 uniform vec4 edge_color : source_color = vec4(0.15, 0.65, 1.0, 1.0);
-uniform float fresnel_power = 2.5;
+uniform float fresnel_power = 1.8;
 uniform float fill_opacity = 0.08;
 
 void fragment() {
-	float fresnel = pow(1.0 - abs(dot(NORMAL, VIEW)), fresnel_power);
+	float fresnel_raw = 1.0 - abs(dot(NORMAL, VIEW));
+	float fresnel = pow(smoothstep(0.0, 1.0, fresnel_raw), fresnel_power);
 	ALBEDO = edge_color.rgb;
 	EMISSION = edge_color.rgb * fresnel * 2.5;
 	ALPHA = fill_opacity + fresnel * 0.7;
@@ -124,6 +125,8 @@ func _build_shell() -> void:
 	_viewport = SubViewport.new()
 	_viewport.size = VIEWPORT_SIZE
 	_viewport.transparent_bg = false
+	_viewport.msaa_3d = Viewport.MSAA_8X
+	_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	viewport_container.add_child(_viewport)
 
@@ -226,7 +229,12 @@ func _rebuild_engine() -> void:
 		"visual_nodes": _engine_root.get_child_count(),
 		"auto_rotate_deg_per_sec": AUTO_ROTATE_DEG_PER_SEC,
 		"viewport_size": "%sx%s" % [VIEWPORT_SIZE.x, VIEWPORT_SIZE.y],
-		"shader": "holographic_fresnel"
+		"shader": "holographic_fresnel",
+		"fresnel_power": 1.8,
+		"msaa_3d": "8x",
+		"screen_space_aa": "fxaa",
+		"min_cylinder_segments": 32,
+		"min_sphere_segments": 24
 	}
 
 func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: float, intake_scale: float, fuel_scale: float, material_mass_scale: float, spark_shift: float, material_color: Color) -> void:
@@ -496,7 +504,8 @@ func _cylinder(node_name: String, position_value: Vector3, radius: float, height
 	mesh.top_radius = radius
 	mesh.bottom_radius = radius
 	mesh.height = height
-	mesh.radial_segments = segments
+	mesh.radial_segments = maxi(segments, 32)
+	mesh.rings = 4
 	var instance := MeshInstance3D.new()
 	instance.name = node_name
 	instance.mesh = mesh
@@ -515,7 +524,8 @@ func _pipe_between(node_name: String, from_pos: Vector3, to_pos: Vector3, radius
 	mesh.top_radius = radius
 	mesh.bottom_radius = radius
 	mesh.height = length
-	mesh.radial_segments = segments
+	mesh.radial_segments = maxi(segments, 32)
+	mesh.rings = 4
 	var instance := MeshInstance3D.new()
 	instance.name = node_name
 	instance.mesh = mesh
@@ -528,8 +538,8 @@ func _sphere(node_name: String, position_value: Vector3, radius: float, color: C
 	var mesh := SphereMesh.new()
 	mesh.radius = radius
 	mesh.height = radius * 2.0
-	mesh.radial_segments = segments
-	mesh.rings = rings
+	mesh.radial_segments = maxi(segments, 24)
+	mesh.rings = maxi(rings, 16)
 	var instance := MeshInstance3D.new()
 	instance.name = node_name
 	instance.mesh = mesh
@@ -553,7 +563,7 @@ func _material(color: Color) -> ShaderMaterial:
 	var material := ShaderMaterial.new()
 	material.shader = _holographic_shader
 	material.set_shader_parameter("edge_color", Color(color.r, color.g, color.b, 1.0))
-	material.set_shader_parameter("fresnel_power", 2.5)
+	material.set_shader_parameter("fresnel_power", 1.8)
 	material.set_shader_parameter("fill_opacity", clampf(color.a * 0.14, 0.04, 0.12))
 	return material
 
