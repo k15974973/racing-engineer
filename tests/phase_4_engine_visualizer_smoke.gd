@@ -52,6 +52,14 @@ func _run() -> void:
 	if int(base_state.get("min_cylinder_segments", 0)) < 32 or int(base_state.get("min_sphere_segments", 0)) < 24:
 		_fail("Engine visualizer mesh resolution should keep smooth cylinder/sphere minimums.")
 		return
+	if bool(base_state.get("bounding_box", true)):
+		_fail("Engine visualizer should not render the old enclosing bounding box.")
+		return
+	if not bool(base_state.get("floor_reflection", false)):
+		_fail("Engine visualizer should keep a low-opacity floor reflection.")
+		return
+	if not _assert_zoom_input(base_state):
+		return
 
 	var tuned: Dictionary = game_data.calculate_engine_setup("inline_4", "single_turbo", "aluminum", {
 		"compression": 14.0,
@@ -120,6 +128,33 @@ func _run() -> void:
 	])
 	_restore()
 	quit(0)
+
+func _assert_zoom_input(base_state: Dictionary) -> bool:
+	var before := float(base_state.get("camera_zoom_z", 0.0))
+	var min_zoom := float(base_state.get("camera_zoom_min", 0.0))
+	var max_zoom := float(base_state.get("camera_zoom_max", 0.0))
+	if not is_equal_approx(min_zoom, 2.0) or not is_equal_approx(max_zoom, 8.0):
+		_fail("Camera zoom should clamp between 2.0 and 8.0.")
+		return false
+
+	var zoom_in := InputEventMouseButton.new()
+	zoom_in.button_index = MOUSE_BUTTON_WHEEL_UP
+	zoom_in.pressed = true
+	_visualizer._on_viewport_gui_input(zoom_in)
+	var after_in := float(_visualizer.get_visual_state().get("camera_zoom_z", 0.0))
+	if after_in >= before:
+		_fail("Mouse wheel up should move camera closer on Z.")
+		return false
+
+	var zoom_out := InputEventMouseButton.new()
+	zoom_out.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	zoom_out.pressed = true
+	_visualizer._on_viewport_gui_input(zoom_out)
+	var after_out := float(_visualizer.get_visual_state().get("camera_zoom_z", 0.0))
+	if after_out <= after_in:
+		_fail("Mouse wheel down should move camera farther on Z.")
+		return false
+	return true
 
 func _assert_valid_state(state: Dictionary, label: String) -> bool:
 	if state.is_empty() or not bool(state.get("valid", false)):

@@ -2,6 +2,9 @@ extends PanelContainer
 
 const VIEWPORT_SIZE := Vector2i(640, 320)
 const AUTO_ROTATE_DEG_PER_SEC := 6.0
+const CAMERA_ZOOM_MIN := 2.0
+const CAMERA_ZOOM_MAX := 8.0
+const CAMERA_ZOOM_STEP := 0.3
 const CYLINDER_COLOR := Color(0.35, 0.78, 0.92, 0.34)
 const PISTON_COLOR := Color(1.0, 0.38, 0.18, 0.78)
 const FUEL_COLOR := Color(0.98, 0.84, 0.18, 0.78)
@@ -37,11 +40,13 @@ var _visual_state: Dictionary = {}
 var _viewport: SubViewport
 var _scene_root: Node3D
 var _engine_root: Node3D
+var _camera: Camera3D
 var _holographic_shader: Shader
 var _pistons: Array[Node3D] = []
 var _cams: Array[Node3D] = []
 var _spinners: Array[Node3D] = []
 var _time := 0.0
+var _camera_zoom_z := 5.0
 
 func _init() -> void:
 	custom_minimum_size = Vector2(0, 360)
@@ -60,7 +65,11 @@ func set_setup(setup: Dictionary) -> void:
 		_rebuild_engine()
 
 func get_visual_state() -> Dictionary:
-	return _visual_state.duplicate(true)
+	var state := _visual_state.duplicate(true)
+	state["camera_zoom_z"] = snappedf(_camera_zoom_z, 0.01)
+	state["camera_zoom_min"] = CAMERA_ZOOM_MIN
+	state["camera_zoom_max"] = CAMERA_ZOOM_MAX
+	return state
 
 func get_render_image() -> Image:
 	if _viewport == null:
@@ -120,6 +129,8 @@ func _build_shell() -> void:
 	viewport_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	viewport_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	viewport_container.custom_minimum_size = Vector2(0, 270)
+	viewport_container.mouse_filter = Control.MOUSE_FILTER_STOP
+	viewport_container.gui_input.connect(_on_viewport_gui_input)
 	stack.add_child(viewport_container)
 
 	_viewport = SubViewport.new()
@@ -146,12 +157,12 @@ func _build_shell() -> void:
 	environment.environment = env
 	_scene_root.add_child(environment)
 
-	var camera := Camera3D.new()
-	camera.position = Vector3(5.0, 3.2, 5.0)
-	camera.fov = 48.0
-	camera.current = true
-	_scene_root.add_child(camera)
-	camera.look_at(Vector3(0.0, 0.40, 0.0), Vector3.UP)
+	_camera = Camera3D.new()
+	_camera.position = Vector3(5.0, 3.2, _camera_zoom_z)
+	_camera.fov = 48.0
+	_camera.current = true
+	_scene_root.add_child(_camera)
+	_update_camera_look_at()
 
 	var key_light := DirectionalLight3D.new()
 	key_light.rotation_degrees = Vector3(-46.0, -34.0, 0.0)
@@ -164,7 +175,33 @@ func _build_shell() -> void:
 	fill_light.omni_range = 8.0
 	_scene_root.add_child(fill_light)
 
-	_scene_root.add_child(_box("base_grid", Vector3(0.0, -0.46, 0.0), Vector3(4.9, 0.015, 2.6), Color(0.24, 0.36, 0.46, 0.26)))
+	_scene_root.add_child(_box("base_grid", Vector3(0.0, -0.46, 0.0), Vector3(4.9, 0.015, 2.6), Color(0.24, 0.36, 0.46, 0.10)))
+
+func _on_viewport_gui_input(event: InputEvent) -> void:
+	if not event is InputEventMouseButton:
+		return
+
+	var mouse_event := event as InputEventMouseButton
+	if not mouse_event.pressed:
+		return
+
+	if mouse_event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		_set_camera_zoom(_camera_zoom_z - CAMERA_ZOOM_STEP)
+		accept_event()
+	elif mouse_event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		_set_camera_zoom(_camera_zoom_z + CAMERA_ZOOM_STEP)
+		accept_event()
+
+func _set_camera_zoom(zoom_z: float) -> void:
+	_camera_zoom_z = clampf(zoom_z, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+	if _camera == null:
+		return
+	_camera.position.z = _camera_zoom_z
+	_update_camera_look_at()
+
+func _update_camera_look_at() -> void:
+	if _camera != null:
+		_camera.look_at(Vector3(0.0, 0.40, 0.0), Vector3.UP)
 
 func _rebuild_engine() -> void:
 	if _scene_root == null:
@@ -234,7 +271,12 @@ func _rebuild_engine() -> void:
 		"msaa_3d": "8x",
 		"screen_space_aa": "fxaa",
 		"min_cylinder_segments": 32,
-		"min_sphere_segments": 24
+		"min_sphere_segments": 24,
+		"camera_zoom_z": snappedf(_camera_zoom_z, 0.01),
+		"camera_zoom_min": CAMERA_ZOOM_MIN,
+		"camera_zoom_max": CAMERA_ZOOM_MAX,
+		"bounding_box": false,
+		"floor_reflection": true
 	}
 
 func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: float, intake_scale: float, fuel_scale: float, material_mass_scale: float, spark_shift: float, material_color: Color) -> void:
@@ -469,13 +511,15 @@ func _build_induction(induction_id: String, intake_scale: float, forced: bool) -
 		_engine_root.add_child(_pipe_between("turbo_feed_%s" % i, turbo_center + Vector3(-0.12, 0.06, 0.0), Vector3(0.36, 0.72, z * 0.32), 0.035 * intake_scale, AIR_COLOR, 14))
 
 func _build_blueprint_frame() -> void:
-	var color := Color(0.58, 0.86, 1.0, 0.26)
-	_engine_root.add_child(_box("frame_x_front", Vector3(0.0, 1.35, -1.18), Vector3(4.7, 0.015, 0.015), color))
-	_engine_root.add_child(_box("frame_x_back", Vector3(0.0, 1.35, 1.18), Vector3(4.7, 0.015, 0.015), color))
-	_engine_root.add_child(_box("frame_z_left", Vector3(-2.35, 1.35, 0.0), Vector3(0.015, 0.015, 2.35), color))
-	_engine_root.add_child(_box("frame_z_right", Vector3(2.35, 1.35, 0.0), Vector3(0.015, 0.015, 2.35), color))
-	_engine_root.add_child(_box("frame_y_left", Vector3(-2.35, 0.35, -1.18), Vector3(0.015, 2.0, 0.015), color))
-	_engine_root.add_child(_box("frame_y_right", Vector3(2.35, 0.35, 1.18), Vector3(0.015, 2.0, 0.015), color))
+	var floor_color := Color(0.58, 0.86, 1.0, 0.03)
+	var line_color := Color(0.58, 0.86, 1.0, 0.13)
+	_engine_root.add_child(_box("floor_reflection", Vector3(0.0, -0.43, 0.0), Vector3(4.7, 0.010, 2.35), floor_color))
+	for i in 5:
+		var x := lerpf(-2.2, 2.2, float(i) / 4.0)
+		_engine_root.add_child(_box("floor_line_x_%s" % i, Vector3(x, -0.415, 0.0), Vector3(0.010, 0.010, 2.25), line_color))
+	for i in 3:
+		var z := lerpf(-1.05, 1.05, float(i) / 2.0)
+		_engine_root.add_child(_box("floor_line_z_%s" % i, Vector3(0.0, -0.412, z), Vector3(4.45, 0.010, 0.010), line_color))
 
 func _cylinder_count(block_id: String) -> int:
 	match block_id:

@@ -23,6 +23,8 @@ The Builder now includes a procedural 3D engine visualizer. It is intentionally 
 - Holographic fresnel shader is applied to primitive meshes with additive transparency, glow, and material-tinted edge color.
 - Crankshaft detail now includes connecting rods, rod ends, crank throws, and counterweight blocks.
 - Visual quality pass uses SubViewport MSAA 8x plus FXAA, cylinder minimum 32 radial segments, sphere minimum 24 radial segments / 16 rings, and softened fresnel power 1.8.
+- Mouse wheel zoom moves the visualizer camera along Z from 2.0 to 8.0 without changing FOV.
+- The enclosing blueprint box is removed. Only a low-opacity holographic floor reflection remains.
 
 The visualizer reads from the final calculated setup object, not seed values, so it follows the same source-of-truth rule used for curve physics and report output.
 
