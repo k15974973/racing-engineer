@@ -15,12 +15,28 @@ const RUBBER_COLOR := Color(0.02, 0.025, 0.03, 0.88)
 const ALUMINUM_COLOR := Color(0.72, 0.72, 0.72, 0.72)
 const TITANIUM_COLOR := Color(0.43, 0.49, 0.56, 0.78)
 const CERAMIC_COLOR := Color(0.94, 0.92, 0.90, 0.78)
+const HOLOGRAPHIC_SHADER_CODE := """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
+
+uniform vec4 edge_color : source_color = vec4(0.15, 0.65, 1.0, 1.0);
+uniform float fresnel_power = 2.5;
+uniform float fill_opacity = 0.08;
+
+void fragment() {
+	float fresnel = pow(1.0 - abs(dot(NORMAL, VIEW)), fresnel_power);
+	ALBEDO = edge_color.rgb;
+	EMISSION = edge_color.rgb * fresnel * 2.5;
+	ALPHA = fill_opacity + fresnel * 0.7;
+}
+"""
 
 var _setup: Dictionary = {}
 var _visual_state: Dictionary = {}
 var _viewport: SubViewport
 var _scene_root: Node3D
 var _engine_root: Node3D
+var _holographic_shader: Shader
 var _pistons: Array[Node3D] = []
 var _cams: Array[Node3D] = []
 var _spinners: Array[Node3D] = []
@@ -32,6 +48,8 @@ func _init() -> void:
 	add_theme_stylebox_override("panel", _panel_style())
 
 func _ready() -> void:
+	_holographic_shader = Shader.new()
+	_holographic_shader.code = HOLOGRAPHIC_SHADER_CODE
 	_build_shell()
 	_rebuild_engine()
 
@@ -119,6 +137,9 @@ func _build_shell() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color.html("#20384A")
 	env.ambient_light_energy = 0.55
+	env.glow_enabled = true
+	env.glow_intensity = 0.8
+	env.glow_bloom = 0.3
 	environment.environment = env
 	_scene_root.add_child(environment)
 
@@ -204,7 +225,8 @@ func _rebuild_engine() -> void:
 		"has_forced_induction": forced,
 		"visual_nodes": _engine_root.get_child_count(),
 		"auto_rotate_deg_per_sec": AUTO_ROTATE_DEG_PER_SEC,
-		"viewport_size": "%sx%s" % [VIEWPORT_SIZE.x, VIEWPORT_SIZE.y]
+		"viewport_size": "%sx%s" % [VIEWPORT_SIZE.x, VIEWPORT_SIZE.y],
+		"shader": "holographic_fresnel"
 	}
 
 func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: float, intake_scale: float, fuel_scale: float, material_mass_scale: float, spark_shift: float, material_color: Color) -> void:
@@ -247,6 +269,10 @@ func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: 
 			var piston := _cylinder("piston_%s" % built, Vector3(x, 0.13, z), 0.128 * chamber_scale, 0.13, PISTON_COLOR, Vector3(bank_tilt, 0.0, 0.0))
 			_engine_root.add_child(piston)
 			_pistons.append(piston)
+			var crank_pin := Vector3(x, -0.34, z * 0.35)
+			_engine_root.add_child(_pipe_between("con_rod_%s" % built, Vector3(x, 0.06, z), crank_pin, 0.032, BRIGHT_STEEL_COLOR, 12))
+			_engine_root.add_child(_sphere("rod_big_end_%s" % built, crank_pin, 0.055, BRIGHT_STEEL_COLOR, 12, 6))
+			_engine_root.add_child(_sphere("rod_small_end_%s" % built, Vector3(x, 0.06, z), 0.042, BRIGHT_STEEL_COLOR, 12, 6))
 
 			var spark := _cylinder("spark_%s" % built, Vector3(x + spark_shift, 0.82 * chamber_scale, z), 0.025, 0.24, Color(0.95, 0.97, 1.0, 0.72), Vector3(0.0, 0.0, 0.0))
 			_engine_root.add_child(spark)
@@ -271,6 +297,7 @@ func _build_piston_engine(block_id: String, cylinder_count: int, chamber_scale: 
 	var crank := _cylinder("crankshaft", Vector3(0.0, -0.35, 0.0), 0.055, block_width * 0.95, STEEL_COLOR, Vector3(0.0, 0.0, 90.0))
 	_engine_root.add_child(crank)
 	_cams.append(crank)
+	_build_crank_counterweights(cylinder_count, cylinders_per_bank, spacing, block_width)
 
 	var front_x := -block_width * 0.5 - 0.18
 	var crank_pulley := _cylinder("crank_pulley", Vector3(front_x, -0.35, 0.0), 0.18, 0.08, STEEL_COLOR, Vector3(90.0, 0.0, 0.0))
@@ -350,6 +377,23 @@ func _build_front_cover_detail(front_x: float, chamber_scale: float, block_depth
 		var tooth := _box("flywheel_tooth_%s" % i, Vector3(front_x - 0.27, y, z), Vector3(0.035, 0.018, 0.055), BRIGHT_STEEL_COLOR)
 		tooth.rotation_degrees.x = rad_to_deg(angle)
 		_engine_root.add_child(tooth)
+
+func _build_crank_counterweights(cylinder_count: int, cylinders_per_bank: int, spacing: float, block_width: float) -> void:
+	var weight_count: int = maxi(cylinder_count, 4)
+	for i in weight_count:
+		var lane := i % cylinders_per_bank
+		var x := (float(lane) - float(cylinders_per_bank - 1) * 0.5) * spacing
+		var phase := TAU * float(i) / float(weight_count)
+		var y := -0.35 + sin(phase) * 0.10
+		var z := cos(phase) * 0.16
+		var weight := _box("crank_counterweight_%s" % i, Vector3(x, y, z), Vector3(0.08, 0.18, 0.06), BRIGHT_STEEL_COLOR)
+		weight.rotation_degrees.x = rad_to_deg(phase)
+		_engine_root.add_child(weight)
+		if i < weight_count - 1:
+			var next_lane := (i + 1) % cylinders_per_bank
+			var next_x := (float(next_lane) - float(cylinders_per_bank - 1) * 0.5) * spacing
+			if absf(next_x - x) < block_width:
+				_engine_root.add_child(_pipe_between("crank_throw_%s" % i, Vector3(x, y, z), Vector3(next_x, -0.35 - sin(phase) * 0.08, -z), 0.026, STEEL_COLOR, 10))
 
 func _build_rotary(chamber_scale: float, intake_scale: float, fuel_scale: float, forced: bool, material_color: Color) -> void:
 	_engine_root.add_child(_box("rotary_housing", Vector3(0.0, 0.05, 0.0), Vector3(1.9 * chamber_scale, 0.78 * chamber_scale, 1.0), material_color))
@@ -505,15 +549,12 @@ func _material_color(material_id: String) -> Color:
 func _with_alpha(color: Color, alpha: float) -> Color:
 	return Color(color.r, color.g, color.b, alpha)
 
-func _material(color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.metallic = 0.0 if color.r > 0.9 and color.g > 0.88 and color.b > 0.86 else 0.15
-	material.roughness = 0.38
-	material.emission_enabled = true
-	material.emission = Color(color.r, color.g, color.b, 1.0)
-	material.emission_energy_multiplier = 0.18
+func _material(color: Color) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = _holographic_shader
+	material.set_shader_parameter("edge_color", Color(color.r, color.g, color.b, 1.0))
+	material.set_shader_parameter("fresnel_power", 2.5)
+	material.set_shader_parameter("fill_opacity", clampf(color.a * 0.14, 0.04, 0.12))
 	return material
 
 func _panel_style() -> StyleBoxFlat:

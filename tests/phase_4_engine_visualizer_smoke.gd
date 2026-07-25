@@ -40,6 +40,9 @@ func _run() -> void:
 	if not is_equal_approx(float(base_state.get("auto_rotate_deg_per_sec", 0.0)), 6.0):
 		_fail("Engine visualizer should auto-rotate at 6 degrees per second.")
 		return
+	if str(base_state.get("shader", "")) != "holographic_fresnel":
+		_fail("Engine visualizer should use the holographic fresnel shader.")
+		return
 
 	var tuned: Dictionary = game_data.calculate_engine_setup("inline_4", "single_turbo", "aluminum", {
 		"compression": 14.0,
@@ -80,7 +83,7 @@ func _run() -> void:
 	if int(v8_state.get("cylinder_count", 0)) != 8 or int(v8_state.get("piston_nodes", 0)) != 8:
 		_fail("V8 visual should expose 8 cylinders and 8 moving piston nodes.")
 		return
-	if int(v8_state.get("visual_nodes", 0)) < 140:
+	if int(v8_state.get("visual_nodes", 0)) < 175:
 		_fail("V8 visual should keep the detailed model pass. Nodes=%s" % int(v8_state.get("visual_nodes", 0)))
 		return
 	if str(v8_state.get("material_color", "")) == str(base_state.get("material_color", "")):

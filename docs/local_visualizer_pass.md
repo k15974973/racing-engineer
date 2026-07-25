@@ -20,6 +20,8 @@ The Builder now includes a procedural 3D engine visualizer. It is intentionally 
 - Pistons, cam rail, crankshaft, pulleys, turbo wheels, and rotary rotors animate while the builder is open.
 - Detail pass adds valve covers, bolt rows, coil packs, intake runners, multi-branch exhaust headers, collector pipes, timing cover bolts, flywheel teeth, turbo fan blades, throttle bolts, and supercharger ribs.
 - Viewport is fixed at 640x320 with an isometric camera and 6 degrees/second auto-rotation.
+- Holographic fresnel shader is applied to primitive meshes with additive transparency, glow, and material-tinted edge color.
+- Crankshaft detail now includes connecting rods, rod ends, crank throws, and counterweight blocks.
 
 The visualizer reads from the final calculated setup object, not seed values, so it follows the same source-of-truth rule used for curve physics and report output.
 
