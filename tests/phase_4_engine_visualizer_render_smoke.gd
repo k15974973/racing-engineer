@@ -21,6 +21,8 @@ func _run() -> void:
 		return
 
 	_visualizer = EngineVisualizer3D.new()
+	_visualizer.custom_minimum_size = Vector2(720, 560)
+	_visualizer.size = Vector2(720, 560)
 	root.add_child(_visualizer)
 	_visualizer.set_setup(setup)
 	await process_frame

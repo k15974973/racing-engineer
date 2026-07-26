@@ -114,6 +114,7 @@ var _bench_status_label: Label
 var _bench_toggle_button: Button
 var _setup_name_edit: LineEdit
 var _current_view := VIEW_ENGINE_BUILDER
+var _builder_active_tab := "block"
 var _builder_selection := {
 	"block": "",
 	"induction": "",
@@ -337,34 +338,20 @@ func _unlock_banner_panel() -> PanelContainer:
 func _render_engine_builder(layout: VBoxContainer) -> void:
 	_ensure_builder_selection()
 
-	layout.add_child(_section_title("Engine Builder"))
-	layout.add_child(_body_text("Choose a block, induction system, and material. The projected setup updates from the same structured data that future tuning and race simulation will use."))
-
-	var builder := HBoxContainer.new()
-	builder.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	builder.add_theme_constant_override("separation", 12)
-	layout.add_child(builder)
-
-	var controls := VBoxContainer.new()
-	controls.custom_minimum_size = Vector2(420, 0)
-	controls.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	controls.add_theme_constant_override("separation", 10)
-	builder.add_child(controls)
+	if not _builder_selection.has(_builder_active_tab):
+		_builder_active_tab = "block"
 
 	_tuning_value_labels.clear()
-	controls.add_child(_builder_choice_panel("Block", GameData.blocks, "block"))
-	controls.add_child(_builder_choice_panel("Induction", GameData.inductions, "induction"))
-	controls.add_child(_builder_choice_panel("Material", GameData.materials, "material"))
-	controls.add_child(_garage_status_panel())
-	controls.add_child(_builder_tuning_panel())
-	controls.add_child(_setup_save_panel())
+	layout.add_child(_engine_visualizer_panel(true))
+	layout.add_child(_builder_tab_bar())
+	layout.add_child(_builder_active_choice_panel())
 
 	var results := VBoxContainer.new()
 	_builder_results = results
 	results.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	results.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	results.add_theme_constant_override("separation", 10)
-	builder.add_child(results)
+	layout.add_child(results)
 
 	_refresh_builder_results()
 
@@ -419,6 +406,171 @@ func _builder_choice_panel(title: String, records: Array, key: String) -> PanelC
 	stack.add_child(_selected_slot_panel(key, selected_record))
 
 	return panel
+
+func _builder_tab_bar() -> HBoxContainer:
+	var tabs := HBoxContainer.new()
+	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tabs.add_theme_constant_override("separation", 0)
+	for key in ["block", "induction", "material"]:
+		tabs.add_child(_builder_tab_button(key))
+	return tabs
+
+func _builder_tab_button(key: String) -> Button:
+	var button := Button.new()
+	button.text = "%s %s" % [_builder_step_prefix(key), _builder_tab_title(key)]
+	button.focus_mode = Control.FOCUS_NONE
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.custom_minimum_size = Vector2(0, 46)
+	button.pressed.connect(_on_builder_tab_selected.bind(key))
+
+	var active := key == _builder_active_tab
+	var normal_bg := Color.html("#111827") if active else Color.html("#F9FAFB")
+	var border := Color.html("#111827") if active else Color.html("#D1D5DB")
+	var hover_bg := Color.html("#1F2937") if active else Color.html("#EEF2FF")
+	button.add_theme_stylebox_override("normal", _panel_style(normal_bg, border))
+	button.add_theme_stylebox_override("hover", _panel_style(hover_bg, Color.html("#534AB7")))
+	button.add_theme_stylebox_override("pressed", _panel_style(Color.html("#374151"), Color.html("#111827")))
+	button.add_theme_color_override("font_color", Color.html("#FFFFFF") if active else Color.html("#111827"))
+	button.add_theme_color_override("font_hover_color", Color.html("#FFFFFF") if active else Color.html("#111827"))
+	return button
+
+func _builder_tab_title(key: String) -> String:
+	match key:
+		"block":
+			return "Block"
+		"induction":
+			return "Induction"
+		"material":
+			return "Material"
+		_:
+			return key.capitalize()
+
+func _builder_active_choice_panel() -> PanelContainer:
+	var key := _builder_active_tab
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel_style(Color.html("#FFFFFF"), Color.html("#D1D5DB")))
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	panel.add_child(margin)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 10)
+	margin.add_child(stack)
+
+	var choices := GridContainer.new()
+	choices.columns = 3
+	choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	choices.add_theme_constant_override("h_separation", 8)
+	choices.add_theme_constant_override("v_separation", 8)
+	stack.add_child(choices)
+
+	for item in GameData.get_collection(_builder_collection_name(key)):
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = item
+		var record_id := str(record.get("id", ""))
+		var selected := record_id == str(_builder_selection[key])
+		var locked := not _builder_option_unlocked(key, record_id)
+		choices.add_child(_slot_choice_button(str(record.get("name", "Unnamed")), record_id, key, selected, locked))
+
+	var selected_record: Dictionary = GameData.get_record_by_id(_builder_collection_name(key), str(_builder_selection[key]))
+	stack.add_child(_builder_selected_description(key, selected_record))
+	return panel
+
+func _builder_selected_description(key: String, record: Dictionary) -> VBoxContainer:
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 4)
+	if record.is_empty():
+		stack.add_child(_status("Select an option to update the engine model.", false))
+		return stack
+
+	var name := str(record.get("name", "Unnamed"))
+	stack.add_child(_label("Selected: %s - %s" % [name, _builder_selection_short_detail(key, record)], 14, Color.html("#111827")))
+	stack.add_child(_body_text(_builder_selection_bias_line(key, record)))
+	return stack
+
+func _builder_selection_short_detail(key: String, record: Dictionary) -> String:
+	match key:
+		"block":
+			return _block_visual_layout_text(str(record.get("id", "")))
+		"induction":
+			return _induction_visual_text(str(record.get("id", "")))
+		"material":
+			return _material_visual_text(str(record.get("id", "")))
+		_:
+			return str(record)
+
+func _builder_selection_bias_line(key: String, record: Dictionary) -> String:
+	match key:
+		"block":
+			return "Peak power bias: %s" % _block_power_bias(str(record.get("id", "")))
+		"induction":
+			return "Response bias: lag %0.2f, power x%0.2f." % [float(record.get("lag", 0.0)), float(record.get("power_mult", 1.0))]
+		"material":
+			return "Material bias: mass x%0.2f, heat capacity x%0.2f." % [float(record.get("mass_mult", 1.0)), float(record.get("max_heat_mult", 1.0))]
+		_:
+			return ""
+
+func _block_visual_layout_text(block_id: String) -> String:
+	match block_id:
+		"v4":
+			return "4-cylinder V layout"
+		"v6":
+			return "6-cylinder V layout"
+		"v8":
+			return "8-cylinder V layout"
+		"boxer_4":
+			return "4-cylinder flat layout"
+		"inline_4":
+			return "4-cylinder inline layout"
+		"rotary":
+			return "rotor housing layout"
+		_:
+			return "engine block layout"
+
+func _induction_visual_text(induction_id: String) -> String:
+	match induction_id:
+		"na":
+			return "clean intake, no turbo"
+		"single_turbo":
+			return "single turbo and charge pipe"
+		"twin_turbo":
+			return "paired turbo wheels"
+		"supercharger":
+			return "belt-driven supercharger"
+		"compound":
+			return "compound boost package"
+		_:
+			return "induction package"
+
+func _material_visual_text(material_id: String) -> String:
+	match material_id:
+		"titanium":
+			return "blue-gray lightweight shell"
+		"ceramic":
+			return "warm white heat shell"
+		_:
+			return "bright aluminum shell"
+
+func _block_power_bias(block_id: String) -> String:
+	match block_id:
+		"v8":
+			return "high straight-line torque"
+		"rotary":
+			return "high-RPM speed"
+		"inline_4":
+			return "boost-rewarding top end"
+		"boxer_4":
+			return "corner-exit stability"
+		"v6":
+			return "balanced mid-range"
+		_:
+			return "light response"
 
 func _slot_choice_button(text: String, record_id: String, key: String, selected: bool, locked: bool) -> Button:
 	var button := Button.new()
@@ -494,7 +646,7 @@ func _builder_summary_panel() -> PanelContainer:
 	stack.add_theme_constant_override("separation", 10)
 	margin.add_child(stack)
 
-	stack.add_child(_label("Projected Setup", 18, Color.html("#111827")))
+	stack.add_child(_label("Power Curve", 18, Color.html("#111827")))
 
 	if setup.has("error"):
 		stack.add_child(_status(str(setup["error"]), false))
@@ -503,24 +655,7 @@ func _builder_summary_panel() -> PanelContainer:
 		stack.add_child(_body_text("Select Block, Induction, and Material to view the curve."))
 		return panel
 
-	var title := "%s + %s + %s" % [setup["block"].get("name", "Block"), setup["induction"].get("name", "Induction"), setup["material"].get("name", "Material")]
-	stack.add_child(_body_text(title))
-	stack.add_child(_body_text(str(setup["curve_summary"])))
 	stack.add_child(_curve_card(setup))
-
-	stack.add_child(_metric_row("Peak power", "%s hp" % setup["peak_power_hp"]))
-	stack.add_child(_metric_row("Torque", "%s Nm" % setup["torque_nm"]))
-	stack.add_child(_metric_row("Mass", "%s kg" % setup["mass_kg"]))
-	stack.add_child(_metric_row("RPM range", "%s-%s rpm" % [setup["rpm_min"], setup["rpm_max"]]))
-
-	stack.add_child(_meter_row("Engine health", float(setup.get("engine_health_score", 100.0)), 120.0, true))
-	stack.add_child(_meter_row("Heat load", float(setup["heat_score"]), 160.0, false))
-	stack.add_child(_meter_row("Reliability", float(setup["reliability_score"]), 120.0, true))
-	stack.add_child(_meter_row("Throttle response", float(setup["response_score"]), 120.0, true))
-	stack.add_child(_meter_row("Push margin", float(setup["push_margin"]), 120.0, true))
-
-	var safe := float(setup["push_margin"]) >= 55.0
-	stack.add_child(_status(str(setup["warning"]), safe))
 	return panel
 
 func _curve_card(setup: Dictionary) -> PanelContainer:
@@ -2022,13 +2157,12 @@ func _refresh_builder_results() -> void:
 		_builder_results.remove_child(child)
 		child.queue_free()
 
-	_builder_results.add_child(_engine_visualizer_panel())
 	_builder_results.add_child(_builder_summary_panel())
-	_builder_results.add_child(_test_bench_preview_panel())
-	_builder_results.add_child(_setup_comparison_panel())
 
-func _engine_visualizer_panel() -> PanelContainer:
+func _engine_visualizer_panel(hero: bool = false) -> PanelContainer:
 	var visualizer := EngineVisualizer3D.new()
+	if hero:
+		visualizer.custom_minimum_size = Vector2(0, 520)
 	visualizer.set_setup(_current_setup())
 	return visualizer
 
@@ -2073,8 +2207,13 @@ func _on_builder_choice_selected(selected_id: String, key: String) -> void:
 		return
 
 	_builder_selection[key] = selected_id
+	_builder_active_tab = key
 	_reset_race_result()
 	_reset_test_bench()
+	_show_view(VIEW_ENGINE_BUILDER)
+
+func _on_builder_tab_selected(key: String) -> void:
+	_builder_active_tab = key
 	_show_view(VIEW_ENGINE_BUILDER)
 
 func _on_builder_tuning_changed(value: float, key: String) -> void:

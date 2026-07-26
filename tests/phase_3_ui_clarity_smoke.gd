@@ -27,6 +27,8 @@ func _run() -> void:
 		return
 	if not _assert_builder_steps():
 		return
+	if not _assert_builder_redesign():
+		return
 	if not _assert_post_race_cta():
 		return
 
@@ -67,9 +69,50 @@ func _assert_debug_nav_hidden() -> bool:
 
 func _assert_builder_steps() -> bool:
 	for marker in ["1 ->", "2 ->", "3"]:
-		if not _has_label_text(_main, marker):
+		if not _has_label_text(_main, marker) and not _has_button_prefix(_main, marker):
 			_fail("Builder should show step marker %s." % marker)
 			return false
+	return true
+
+func _assert_builder_redesign() -> bool:
+	var visualizer := _find_visualizer(_main)
+	if visualizer == null:
+		_fail("Builder should show the 3D engine visualizer as the hero element.")
+		return false
+	if visualizer.custom_minimum_size.y < 500.0:
+		_fail("Builder visualizer should be the full-width hero, not a small side panel.")
+		return false
+	if _has_label_text(_main, "Live Engine Model"):
+		_fail("Builder visualizer should not show the old explanatory title.")
+		return false
+	if _has_label_text(_main, "Projected Setup"):
+		_fail("Builder should not show the old Projected Setup text block.")
+		return false
+	if _find_button(_main, "Naturally Aspirated") != null:
+		_fail("Default Builder tab should show only Block options, not Induction options.")
+		return false
+	if _find_button(_main, "Standard Aluminum") != null:
+		_fail("Default Builder tab should show only Block options, not Material options.")
+		return false
+	if _find_button(_main, "V8") == null:
+		_fail("Default Builder tab should expose Block options.")
+		return false
+
+	_main._on_builder_tab_selected("induction")
+	if _find_button(_main, "Naturally Aspirated") == null:
+		_fail("Induction tab should expose Induction options.")
+		return false
+	if _find_button(_main, "V8") != null:
+		_fail("Induction tab should hide Block options.")
+		return false
+
+	_main._on_builder_tab_selected("material")
+	if _find_button(_main, "Standard Aluminum") == null:
+		_fail("Material tab should expose Material options.")
+		return false
+	if _find_button(_main, "Single Turbo") != null:
+		_fail("Material tab should hide Induction options.")
+		return false
 	return true
 
 func _assert_post_race_cta() -> bool:
@@ -111,6 +154,23 @@ func _find_button(node: Node, text: String) -> Button:
 		return node as Button
 	for child in node.get_children():
 		var result := _find_button(child, text)
+		if result != null:
+			return result
+	return null
+
+func _has_button_prefix(node: Node, prefix: String) -> bool:
+	if node is Button and (node as Button).text.begins_with(prefix):
+		return true
+	for child in node.get_children():
+		if _has_button_prefix(child, prefix):
+			return true
+	return false
+
+func _find_visualizer(node: Node) -> Control:
+	if node is Control and node.has_method("get_visual_state"):
+		return node as Control
+	for child in node.get_children():
+		var result := _find_visualizer(child)
 		if result != null:
 			return result
 	return null

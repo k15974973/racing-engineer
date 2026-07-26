@@ -49,8 +49,9 @@ var _time := 0.0
 var _camera_zoom_z := 5.0
 
 func _init() -> void:
-	custom_minimum_size = Vector2(0, 360)
+	custom_minimum_size = Vector2(0, 480)
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_theme_stylebox_override("panel", _panel_style())
 
 func _ready() -> void:
@@ -109,26 +110,11 @@ func _build_shell() -> void:
 	stack.add_theme_constant_override("separation", 8)
 	margin.add_child(stack)
 
-	var title := Label.new()
-	title.text = "Live Engine Model"
-	title.add_theme_font_size_override("font_size", 16)
-	title.add_theme_color_override("font_color", Color.html("#F8FAFC"))
-	title.autowrap_mode = TextServer.AUTOWRAP_OFF
-	stack.add_child(title)
-
-	var note := Label.new()
-	note.text = "Tuning sliders reshape chamber, intake, fuel rail, and rotating parts in real time."
-	note.add_theme_font_size_override("font_size", 12)
-	note.add_theme_color_override("font_color", Color.html("#CBD5E1"))
-	note.autowrap_mode = TextServer.AUTOWRAP_OFF
-	note.clip_text = true
-	stack.add_child(note)
-
 	var viewport_container := SubViewportContainer.new()
 	viewport_container.stretch = true
 	viewport_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	viewport_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	viewport_container.custom_minimum_size = Vector2(0, 270)
+	viewport_container.custom_minimum_size = Vector2(0, 440)
 	viewport_container.mouse_filter = Control.MOUSE_FILTER_STOP
 	viewport_container.gui_input.connect(_on_viewport_gui_input)
 	stack.add_child(viewport_container)
